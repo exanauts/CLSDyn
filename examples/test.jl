@@ -20,6 +20,6 @@ function dg(out, u, p, t)
     out[1] = u[1]
 end
 
-#using SciMLSensitivity
-#res = adjoint_sensitivities(sol, Vern9(), dgdu_continuous = dg, g = g, abstol = 1e-8,
-#                            reltol = 1e-8)
+using SciMLSensitivity
+res = adjoint_sensitivities(sol, Vern9(), dgdu_continuous = dg, g = g, abstol = 1e-8,
+                           reltol = 1e-8)
