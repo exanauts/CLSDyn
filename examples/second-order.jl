@@ -9,6 +9,8 @@ f!(du,u,p,t) = CLSDyn.classic_resfun!(du, u, ps)
 struct MyTag end
 # To compute Hessian H[i,:] = d^2G/du_0^2
 seed = zeros(length(x0))
+i = 4
+seed[i] = 1.0
 u0 = ForwardDiff.Dual{MyTag}.(copy(x0), copy(seed))
 u0[1] = -0.005
 
