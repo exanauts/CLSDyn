@@ -1,0 +1,7 @@
+name = "CLSDyn"
+uuid = "3e433a65-be19-445c-8d5a-9797b2d5e77c"
+authors = ["Daniel Adrian Maldonado <maldonadod@anl.gov>"]
+version = "0.1.0"
+
+[deps]
+PowerModels = "c36e90e8-916a-50a6-bd94-075b64ef4655"
