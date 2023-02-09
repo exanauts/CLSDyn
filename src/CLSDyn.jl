@@ -8,14 +8,33 @@ mutable struct PSystem
     nbus::Int
     ngen::Int
     nload::Int
+    # parameters
+    vmag::Vector{Float64}
     yred::Matrix{ComplexF64}
     pmec::Vector{Float64}
     gen_inertia::Vector{Float64}
     gen_damping::Vector{Float64}
 end
 
+function classic_resfun!(dx, x, ps::PSystem)
+    ngen = ps.ngen
+    vmag = ps.vmag
+    pmec = ps.pmec
+    yred = ps.yred
+    H = ps.gen_inertia
+    D = ps.gen_damping
+
+    pelec = zeros(Float64, ngen)
+    w = x[1:ngen]
+    delta = x[ngen + 1:end]
+    compute_pelec(pelec, vmag, delta, yred)
+    for i in 1:ngen
+        dx[i] = (1.0/(2.0*H[i]))*(pmec[i] - pelec[i] - D[i]*w[i])
+        dx[ngen + i] = _WS*w[i]
+    end
+end
+
 function compute_pelec(pelec, vmag, vang, yred)
-    """Compute power injection"""
     nbus = size(pelec, 1)
     pelec .= 0.0
     for i in 1:nbus
@@ -108,7 +127,7 @@ function load_matpower(casefile)
         pmec[i] += gen_damping[i]*w[i]
     end
 
-    ps = PSystem(nbus, ngen, nload, yred, pmec, gen_inertia, gen_damping)
+    ps = PSystem(nbus, ngen, nload, vmag, yred, pmec, gen_inertia, gen_damping)
     x0 = vcat(w, delta)
     return x0, ps
 end
