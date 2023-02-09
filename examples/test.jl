@@ -21,5 +21,11 @@ function dg(out, u, p, t)
 end
 
 using SciMLSensitivity
-res = adjoint_sensitivities(sol, Vern9(), dgdu_continuous = dg, g = g, abstol = 1e-8,
-                           reltol = 1e-8)
+res = adjoint_sensitivities(
+    sol,
+    Vern9(),
+    dgdu_continuous = dg,
+    g = g,
+    abstol = 1e-8,
+    reltol = 1e-8
+)

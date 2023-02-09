@@ -24,7 +24,7 @@ function classic_resfun!(dx, x, ps::PSystem)
     H = ps.gen_inertia
     D = ps.gen_damping
 
-    pelec = zeros(Float64, ngen)
+    pelec = zeros(eltype(x), ngen)
     w = x[1:ngen]
     delta = x[ngen + 1:end]
     compute_pelec(pelec, vmag, delta, yred)
@@ -74,7 +74,7 @@ function load_matpower(casefile)
         pd = network_data["load"][string(i)]["pd"]
         qd = network_data["load"][string(i)]["qd"]
         vm = sol["solution"]["bus"][string(load_bus)]["vm"]
-        
+
         yload = -pd/vm^2 + im*(qd/vm^2)
         YBB[load_bus, load_bus] -= yload
     end
@@ -99,10 +99,10 @@ function load_matpower(casefile)
         # we need to approximate generator reactance
         xdp = 1.0
         egen = (vm + p_inj*xdp/vm) + im*(q_inj*xdp/vm)
-        
+
         vmag[i] = abs(egen)
         vang[i] = angle(egen) + va
-        
+
         yint = 1/(im*xdp)
         YAA[i, i] += yint
         YAB[i, gen_bus] -= yint
