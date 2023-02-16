@@ -138,10 +138,11 @@ function load_matpower(casefile)
 
     # add loads to admittance matrix
     for i=1:nload
-        load_bus = network_data["load"][string(i)]["load_bus"]
+        load_bus_tag = network_data["load"][string(i)]["load_bus"]
+        load_bus = ybus_data.bus_to_idx[load_bus_tag]
         pd = network_data["load"][string(i)]["pd"]
         qd = network_data["load"][string(i)]["qd"]
-        vm = sol["solution"]["bus"][string(load_bus)]["vm"]
+        vm = sol["solution"]["bus"][string(load_bus_tag)]["vm"]
 
         yload = -pd/vm^2 + im*(qd/vm^2)
         YBB[load_bus, load_bus] -= yload
@@ -157,9 +158,10 @@ function load_matpower(casefile)
     YBA = zeros(Complex, nbus, ngen)
 
     for i=1:ngen
-        gen_bus = network_data["gen"][string(i)]["gen_bus"]
-        vm = sol["solution"]["bus"][string(gen_bus)]["vm"]
-        va = sol["solution"]["bus"][string(gen_bus)]["va"]
+        gen_bus_tag = network_data["gen"][string(i)]["gen_bus"]
+        gen_bus = ybus_data.bus_to_idx[gen_bus_tag]
+        vm = sol["solution"]["bus"][string(gen_bus_tag)]["vm"]
+        va = sol["solution"]["bus"][string(gen_bus_tag)]["va"]
         p_inj = sol["solution"]["gen"][string(i)]["pg"]
         q_inj = sol["solution"]["gen"][string(i)]["qg"]
 
