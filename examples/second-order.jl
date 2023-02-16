@@ -2,8 +2,16 @@ import CLSDyn
 using DifferentialEquations
 using Plots
 using ForwardDiff
+using LazyArtifacts
 
-x0, ps = CLSDyn.load_matpower("examples/case9.m")
+# Choose case to run
+case = "case9"
+
+# Load case file from Artifact
+const DATA_DIR = joinpath(artifact"ExaData", "ExaData")
+case_file = joinpath(DATA_DIR, "$(case).m")
+
+x0, ps = CLSDyn.load_matpower(case_file)
 f!(du,u,p,t) = CLSDyn.classic_resfun!(du, u, ps)
 
 struct MyTag end
