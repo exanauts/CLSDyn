@@ -1,8 +1,5 @@
 module CLSDyn
-using DifferentialEquations
-using Plots
 using ForwardDiff
-using SciMLSensitivity
 
 import PowerModels
 
@@ -20,69 +17,6 @@ struct PSystem
     gen_damping::Vector{Float64}
 end
 
-struct CLSDiffTag end
-
-struct Dynamics
-    ps::PSystem
-    f!::Function
-    g::Function
-    dg::Function
-    x0::Vector{Float64}
-    u0
-    seed::Matrix{Float64}
-    prob
-    sol
-end
-export Dynamics
-
-function Dynamics(case_file::String)
-    x0, ps = CLSDyn.load_matpower(case_file)
-    f!(du,u,p,t) = CLSDyn.classic_resfun!(du, u, ps)
-    eval(
-        :(ForwardDiff.:≺(
-            ::Type{ForwardDiff.Tag{DiffEqBase.OrdinaryDiffEqTag, ForwardDiff.Dual{CLSDiffTag, Float64, 1}}},
-            ::Type{CLSDiffTag}
-        ) = true)
-    )
-    eval(
-        :(ForwardDiff.:≺(
-            ::Type{CLSDiffTag},
-            ::Type{ForwardDiff.Tag{DiffEqBase.OrdinaryDiffEqTag, ForwardDiff.Dual{CLSDiffTag, Float64, 1}}}
-        ) = false)
-    )
-    seed = zeros(length(x0), length(x0))
-    for i in 1:length(x0)
-        seed[i,i] = 1.0
-    end
-    g(u, p, t) = (u[1] .^ 2) ./ 2
-
-    function dg(out, u, p, t)
-        out[1] = u[1]
-    end
-    u0 = ForwardDiff.Dual{CLSDiffTag}.(copy(x0), seed)
-    u0[1] = -0.005
-
-    tspan=(0.0,5.0)
-    prob = ODEProblem(f!,u0,tspan)
-    return Dynamics(ps, f!, g, dg, x0, u0, seed, prob, nothing)
-
-end
-
-function solve!(prob::Dynamics, saveat)
-    return solve(prob.prob; saveat=saveat)
-end
-
-function second_order_sensitivities(prob::Dynamics, sol)
-    res = adjoint_sensitivities(
-        sol,
-        Vern9(),
-        dgdu_continuous = prob.dg,
-        g = prob.g,
-        abstol = 1e-8,
-        reltol = 1e-8
-    )
-    return res
-end
 
 function classic_resfun!(dx, x, ps::PSystem)
     ngen = ps.ngen
@@ -201,5 +135,46 @@ function load_matpower(casefile)
     x0 = vcat(w, delta)
     return x0, ps
 end
+
+# INTEGRATORS
+# Let's create a new module
+function rk4_step!(xnew::AbstractArray,
+                   f::Function,
+                   xold::AbstractArray,
+                   p::Vector,
+                   t::Float64,
+                   dt::Float64)
+    # Note: this is a bit inefficient because I allocate the k's each time
+    # i take a step. the best way might be to pass a data structure
+    # where the k's are already allocated.
+    ndim = size(xold, 1)
+    k1 = zeros(ndim)
+    k2 = zeros(ndim)
+    k3 = zeros(ndim)
+    k4 = zeros(ndim)
+    f(k1, xold, p, t)
+    f(k2, xold + (dt/2)*k1, p, t + 0.5*dt)
+    f(k3, xold + (dt/2)*k2, p, t + 0.5*dt)
+    f(k4, xold + dt*k3, p, t + dt)
+    xnew .= xold .+ (dt/6)*k1 .+ (dt/3)*k2 .+ (dt/3)*k3 .+ (dt/6)*k4
+end
+
+function rk4(f::Function, x0::Vector, p::Vector, tspan::Tuple, nsteps::Int)
+    """
+        The function f is of the form
+        f(dx, x, p, t)
+    """
+    ndim = size(x0, 1)
+    traj = zeros((ndim, nsteps))
+    traj[:,1] .= x0
+    dt = (tspan[2] - tspan[1])/nsteps
+    tvec = collect(range(start=tspan[1], stop=tspan[2], length=nsteps))
+    for i=1:(nsteps - 1)
+        t = tvec[i]
+        rk4_step!(@view(traj[:, i + 1]), f, @view(traj[:, i]), p, t, dt)
+    end
+    return (traj, tvec)
+end
+
 
 end # module CLSDyn
