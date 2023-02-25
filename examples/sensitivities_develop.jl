@@ -1,6 +1,7 @@
 using LinearAlgebra
 using ForwardDiff
 using Plots
+using Calculus
 
 function lorenz_rhs!(dx, x, p, t)
     σ = p[1]
@@ -22,7 +23,27 @@ function lorenz_fx!(df, dx, x, p, t)
     df[3] = x[2]*dx[1] + x[1]*dx[2] - β*dx[3]
 end
 
+function lorenz_fx_trans!(df, dx, x, p, t)
+    σ = p[1]
+    ρ = p[2]
+    β = p[3]
+
+    df[1] = -σ*dx[1] + (ρ - x[3])*dx[2] + x[2]*dx[3]
+    df[2] = σ*dx[1] - dx[2] + x[1]*dx[3]
+    df[3] = -x[1]*dx[2] - β*dx[3]
+end
+
 function lorenz_fp!(df, dp, x, p, t)
+    σ = p[1]
+    ρ = p[2]
+    β = p[3]
+
+    df[1] += (x[2] - x[1])*dp[1]
+    df[2] += x[1]*dp[2]
+    df[3] += -x[3]*dp[3]
+end
+
+function lorenz_fp_trans!(df, dp, x, p, t)
     σ = p[1]
     ρ = p[2]
     β = p[3]
@@ -73,11 +94,11 @@ function rk4(f::Function, x0::Vector, p::Vector, tspan::Tuple, nsteps::Int)
 end
 
 """
-        tlm(fx, fp, dx, traj, tvec[, pidx])
+        tlm(fx, fp, dx, traj, tvec, p[, dp])
 
-Computes the Tangent Linear Model. If pidx = 0, computes the TLM with respect
+Computes the Tangent Linear Model. If dp = nothing, computes the TLM with respect
 to given perturbation direction δx0. Otherwise, computes TLM with respect to
-perturbation of parameter pidx.
+perturbation of parameter perturbation dp.
 
 Important: fp must _add_ values to the vector.
 
@@ -119,8 +140,69 @@ function tlm(
     return tlm_traj
 end
 
+"""
+    adjoint_sens
+
+Compute adjoint sensitivities with respect to functional.
+"""
+function adjoint_sens(
+    fx_trans::Function,
+    fp_trans::Function,
+    rx::Function,
+    rp::Function,
+    traj::AbstractArray,
+    tvec::AbstractArray,
+    p::AbstractArray,
+    λ0::AbstractArray,
+)
+
+    # obtain dimensions
+    xdim = size(traj, 1)
+    pdim = size(p, 1)
+    @assert xdim == size(λ0, 1)
+    nsteps = size(tvec, 1)
+
+    μ0 = zeros(pdim)
+    u0 = vcat(λ0, μ0)
+    u = similar(u0)
+    u .= u0
+    unext = similar(u0)
+    
+    function adj_sys!(du, u, x, t)
+        # this is a preliminary, inneficient implementation.
+        λ = @view(u[1:xdim])
+        μ = @view(u[xdim + 1:end])
+        dλ = @view(du[1:xdim])
+        dμ = @view(du[xdim + 1:end])
+
+        drx = zeros(xdim)
+        drp = zeros(pdim)
+        
+        fx_trans(dλ, λ, x, p, t)
+        rx(drx, x, p)
+        #dλ .*= -1
+        dλ .+= drx
+        
+        fp_trans(dμ, λ, x, p, t)
+        rp(drp, x, p)
+        dμ .+= drp
+    end
+    
+    nsteps = size(tvec, 1)
+    for i = reverse(2:nsteps)
+        t = tvec[i]
+        x = @view(traj[:, i])
+        dt = tvec[i] - tvec[i - 1]
+        rk4_step!(unext, adj_sys!, u, x, t, dt)
+        u .= unext
+    end
+    println(u)
+end
+
+
+
 # TEST PROBLEM
-tspan=(0.0, 0.5)
+tspan=(0.0, 0.01)
 pvec = [10.0, 5.0, 8.0/3.0]
 x0 = [1.0, 1.0, 1.0]
 nsteps = 500
@@ -135,7 +217,7 @@ println("Testing TLM")
 # 1.- integrate perturbed system and obtain sensitivities
 #     via finite differences at t_end
 ϵ = 1e-5
-x0eps = [1.0 + ϵ, 1.0, 1.0]
+x0eps = [x0[1] + ϵ, x0[2], x0[3]]
 traj2, tvec2 = rk4(lorenz_rhs!, x0eps, pvec, tspan, nsteps)
 println((traj2[:,end]-traj[:,end])/ϵ)
 
@@ -158,3 +240,49 @@ dx0 = [0.0, 0.0, 0.0]
 dp = [0.0, 1.0, 0.0]
 tlm_traj2  = tlm(lorenz_fx!, lorenz_fp!, dx0, traj, tvec, pvec, dp=dp)
 println(tlm_traj2[:,end])
+
+# COMPUTE sensitivities of cost functional
+println("Test first-order adjoint (terminal condition w.r.t x0)")
+# r(x, p) -> functional cost (integral from t0 to tf).
+# w(x(tf), p) -> terminal cost.
+
+r(x, p) = (x[1] .^ 2) ./ 2
+function rx(dr, x, p)
+    dr[1] = x[1]
+end
+function rp(dr, x, p)
+end
+
+function caca1!(df, dx, x, p, t)
+end
+
+function caca2(dr, x, p)
+end
+
+λ0 = [0.0, 1.0, 0.0]
+adjoint_sens(lorenz_fx_trans!, caca1!, caca2, caca2, traj, tvec, pvec, λ0)
+
+function numerical_integration(x0, pvec)
+    traj, tvec = rk4(lorenz_rhs!, x0, pvec, tspan, nsteps)
+    val = 0.0
+    for i=1:(nsteps-1)
+        val += (tvec[i + 1] - tvec[i])*r(traj[:, i + 1], pvec)
+    end
+    return val
+end
+
+function terminal_condition(x0)
+    traj, tvec = rk4(lorenz_rhs!, x0, pvec, tspan, nsteps)
+    return traj[2,end]
+end
+
+fint_p(pvec) = numerical_integration(x0, pvec)
+fint_x(x0) = numerical_integration(x0, pvec)
+
+println(Calculus.gradient(terminal_condition,x0))
+
+println("Test first-order adjoint (functional w.r.t x0, p)")
+λ0 = [0.0, 0.0, 0.0]
+adjoint_sens(lorenz_fx_trans!, lorenz_fp_trans!, rx, rp, traj, tvec, pvec, λ0)
+println(Calculus.gradient(fint_x,x0))
+println(Calculus.gradient(fint_p,pvec))
