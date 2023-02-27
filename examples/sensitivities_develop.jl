@@ -76,7 +76,7 @@ function rk4_step!(
     xnew .= xold .+ (dt/6)*k1 .+ (dt/3)*k2 .+ (dt/3)*k3 .+ (dt/6)*k4
 end
 
-function rk4(f::Function, x0::Vector, p::Vector, tspan::Tuple, nsteps::Int)
+function rk4(f::Function, x0::AbstractArray, p::AbstractArray, tspan::Tuple, nsteps::Int)
     """
         The function f is of the form
         f(dx, x, p, t)
@@ -106,7 +106,7 @@ Important: fp must _add_ values to the vector.
 function tlm(
     fx::Function,
     fp::Function,
-    dx0::Vector,
+    dx0::AbstractArray,
     traj::AbstractArray,
     tvec::AbstractArray,
     p::AbstractArray;
@@ -180,8 +180,10 @@ function adjoint_sens(
         
         fx_trans(dλ, λ, x, p, t)
         rx(drx, x, p)
-        #dλ .*= -1
         dλ .+= drx
+        # it should be negative. but it works when positive.
+        # what is going on?
+        #dλ .*= -1
         
         fp_trans(dμ, λ, x, p, t)
         rp(drp, x, p)
@@ -196,7 +198,11 @@ function adjoint_sens(
         rk4_step!(unext, adj_sys!, u, x, t, dt)
         u .= unext
     end
-    println(u)
+    # this is dg/dx0
+    λ = u[1:xdim]
+    # this is dg/dp
+    μ = u[xdim + 1:end]
+    return (λ, μ)
 end
 
 
@@ -260,8 +266,8 @@ function caca2(dr, x, p)
 end
 
 λ0 = [0.0, 1.0, 0.0]
-adjoint_sens(lorenz_fx_trans!, caca1!, caca2, caca2, traj, tvec, pvec, λ0)
-
+λ, μ = adjoint_sens(lorenz_fx_trans!, caca1!, caca2, caca2, traj, tvec, pvec, λ0)
+println(λ)
 function numerical_integration(x0, pvec)
     traj, tvec = rk4(lorenz_rhs!, x0, pvec, tspan, nsteps)
     val = 0.0
@@ -283,6 +289,8 @@ println(Calculus.gradient(terminal_condition,x0))
 
 println("Test first-order adjoint (functional w.r.t x0, p)")
 λ0 = [0.0, 0.0, 0.0]
-adjoint_sens(lorenz_fx_trans!, lorenz_fp_trans!, rx, rp, traj, tvec, pvec, λ0)
+λ, μ = adjoint_sens(lorenz_fx_trans!, lorenz_fp_trans!, rx, rp, traj, tvec, pvec, λ0)
+println(λ)
 println(Calculus.gradient(fint_x,x0))
+println(μ)
 println(Calculus.gradient(fint_p,pvec))
