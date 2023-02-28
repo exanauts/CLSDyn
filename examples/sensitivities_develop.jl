@@ -53,11 +53,21 @@ function lorenz_fp_trans!(df, dp, x, p, t)
     df[3] += -x[3]*dp[3]
 end
 
+function lorenz_fxx!(df, z, u, x, p, t)
+    σ = p[1]
+    ρ = p[2]
+    β = p[3]
+
+    df[1] = u[2]*z[3] - z[2]*u[3]
+    df[2] = u[1]*z[3]
+    df[3] = -u[1]*z[2]
+end
+
 function rk4_step!(
     xnew::AbstractArray,
     f::Function,
     xold::AbstractArray,
-    p::AbstractArray,
+    p,
     t::Float64,
     dt::Float64
 )
@@ -153,7 +163,8 @@ function adjoint_sens(
     traj::AbstractArray,
     tvec::AbstractArray,
     p::AbstractArray,
-    λ0::AbstractArray,
+    λ0::AbstractArray;
+    λ_traj::Union{AbstractArray, Nothing}=nothing,
 )
 
     # obtain dimensions
@@ -161,6 +172,16 @@ function adjoint_sens(
     pdim = size(p, 1)
     @assert xdim == size(λ0, 1)
     nsteps = size(tvec, 1)
+
+    # check if we need to store trajectory of λ
+    if λ_traj == nothing
+        store_trajectory = false
+    else
+        store_trajectory = true
+        @assert size(λ_traj, 1) == size(traj, 1)
+        @assert size(λ_traj, 2) == size(traj, 2)
+        λ_traj[:, end] .= λ0
+    end
 
     μ0 = zeros(pdim)
     u0 = vcat(λ0, μ0)
@@ -197,12 +218,81 @@ function adjoint_sens(
         dt = tvec[i] - tvec[i - 1]
         rk4_step!(unext, adj_sys!, u, x, t, dt)
         u .= unext
+        if store_trajectory == true
+            λ_traj[:, i - 1] .= unext[1:xdim]
+        end
     end
     # this is dg/dx0
     λ = u[1:xdim]
     # this is dg/dp
     μ = u[xdim + 1:end]
     return (λ, μ)
+end
+
+
+"""
+    forward_over_adjoint_sens
+
+Compute forward over adjoint sensitivities given a perturbation direction, v.
+"""
+function forward_over_adjoint_sens(
+    v::AbstractVector,
+    fx_trans::Function,
+    fp_trans::Function,
+    fxx_trans::Function,
+    traj::AbstractArray,
+    λ_traj::AbstractArray,
+    tvec::AbstractArray,
+    p::AbstractArray,
+)
+
+    # obtain dimensions
+    xdim = size(traj, 1)
+    pdim = size(p, 1)
+    @assert xdim == size(λ0, 1)
+    nsteps = size(tvec, 1)
+
+    # we first need to compute the trajectory of the TLM given direction
+    # perhaps we can compute this externally such that we do not assume
+    # it had not been computed.
+    tlm_traj  = tlm(fx_trans, fp_trans, v, traj, tvec, p)
+    println("tlm")
+    println(tlm_traj[:,end])
+
+    # preallocate vectors
+    σ0 = zeros(xdim)
+    σ = similar(σ0)
+    σ .= σ0
+    σnext = similar(σ0)
+    
+    # then we form the residual function
+    function fwd_adj_sys!(dσ, σ, ctx, t)
+        # retrieve information
+        x, λ, δx = ctx
+
+        # NOTE: do not preallocate here. will be moved to context
+        fx_vec = zeros(xdim)
+        fxx_vec = zeros(xdim)
+        
+        fx_trans(fx_vec, σ, x, p, t)
+        fxx_trans(fxx_vec, δx, λ, x, p, t)
+        #fxx_trans(fxx_vec, λ, δx, x, p, t)
+
+        dσ .= fx_vec + fxx_vec
+    end
+    
+    nsteps = size(tvec, 1)
+    for i = reverse(2:nsteps)
+        t = tvec[i]
+        x = @view(traj[:, i])
+        λ = @view(λ_traj[:, i])
+        δx = @view(tlm_traj[:, i])
+        ctx = (x, λ, δx)        
+        dt = tvec[i] - tvec[i - 1]
+        rk4_step!(σnext, fwd_adj_sys!, σ, ctx, t, dt)
+        σ .= σnext
+    end
+    println(σ)
 end
 
 
@@ -222,7 +312,7 @@ ps = plot(tvec, traj[idx_var,:])
 println("Testing TLM")
 # 1.- integrate perturbed system and obtain sensitivities
 #     via finite differences at t_end
-ϵ = 1e-5
+ϵ = 1e-7
 x0eps = [x0[1] + ϵ, x0[2], x0[3]]
 traj2, tvec2 = rk4(lorenz_rhs!, x0eps, pvec, tspan, nsteps)
 println((traj2[:,end]-traj[:,end])/ϵ)
@@ -294,3 +384,12 @@ println(λ)
 println(Calculus.gradient(fint_x,x0))
 println(μ)
 println(Calculus.gradient(fint_p,pvec))
+
+
+println("Test second-order adjoint (terminal condition w.r.t x0)")
+v = [1.0, 0.0, 0.0]
+λ_traj = similar(traj)
+adjoint_sens(lorenz_fx_trans!, caca1!, caca2, caca2, traj, tvec, pvec, v, λ_traj=λ_traj)
+forward_over_adjoint_sens(v, lorenz_fx_trans!, lorenz_fp_trans!, lorenz_fxx!, traj, λ_traj, tvec, pvec)
+#forward_over_adjoint_sens(v, lorenz_fx_trans!, caca2, lorenz_fxx!, traj, λ_traj, tvec, pvec)
+println(Calculus.hessian(terminal_condition,x0))
