@@ -53,7 +53,7 @@ function lorenz_fp_trans!(df, dp, x, p, t)
     df[3] += -x[3]*dp[3]
 end
 
-function lorenz_fxx!(df, z, u, x, p, t)
+function lorenz_fxx_FOO!(df, z, u, x, p, t)
     σ = p[1]
     ρ = p[2]
     β = p[3]
@@ -61,6 +61,16 @@ function lorenz_fxx!(df, z, u, x, p, t)
     df[1] = u[2]*z[3] - z[2]*u[3]
     df[2] = u[1]*z[3]
     df[3] = -u[1]*z[2]
+end
+
+function lorenz_fxx!(df, w, v, x, p, t)
+    σ = p[1]
+    ρ = p[2]
+    β = p[3]
+
+    df[1] = 0.0
+    df[2] = -w[1]*v[3] - w[3]*v[1]
+    df[3] = w[1]*v[2] + w[2]*v[1]
 end
 
 function rk4_step!(
@@ -256,8 +266,6 @@ function forward_over_adjoint_sens(
     # perhaps we can compute this externally such that we do not assume
     # it had not been computed.
     tlm_traj  = tlm(fx_trans, fp_trans, v, traj, tvec, p)
-    println("tlm")
-    println(tlm_traj[:,end])
 
     # preallocate vectors
     σ0 = zeros(xdim)
@@ -275,8 +283,7 @@ function forward_over_adjoint_sens(
         fxx_vec = zeros(xdim)
         
         fx_trans(fx_vec, σ, x, p, t)
-        fxx_trans(fxx_vec, δx, λ, x, p, t)
-        #fxx_trans(fxx_vec, λ, δx, x, p, t)
+        fxx_trans(fxx_vec, λ, δx, x, p, t)
 
         dσ .= fx_vec + fxx_vec
     end
@@ -299,9 +306,10 @@ end
 
 # TEST PROBLEM
 tspan=(0.0, 0.01)
-pvec = [10.0, 5.0, 8.0/3.0]
+pvec = [2.0, 1.0, 8.0/3.0]
+pvec = [10.0, 28.0, 8.0/3.0]
 x0 = [1.0, 1.0, 1.0]
-nsteps = 500
+nsteps = 1000
 
 
 idx_var = 1
@@ -355,7 +363,7 @@ end
 function caca2(dr, x, p)
 end
 
-λ0 = [0.0, 1.0, 0.0]
+λ0 = [1.0, 0.0, 0.0]
 λ, μ = adjoint_sens(lorenz_fx_trans!, caca1!, caca2, caca2, traj, tvec, pvec, λ0)
 println(λ)
 function numerical_integration(x0, pvec)
@@ -369,7 +377,15 @@ end
 
 function terminal_condition(x0)
     traj, tvec = rk4(lorenz_rhs!, x0, pvec, tspan, nsteps)
-    return traj[2,end]
+    return traj[1,end]
+end
+
+function terminal_condition_scalar(x)
+    x0 = [1.0, 1.0, x]
+    v = [1.0, 0.0, 0.0]
+    traj, tvec = rk4(lorenz_rhs!, x0, pvec, tspan, nsteps)
+    λ, μ = adjoint_sens(lorenz_fx_trans!, caca1!, caca2, caca2, traj, tvec, pvec, v)
+    return λ[1]
 end
 
 fint_p(pvec) = numerical_integration(x0, pvec)
@@ -392,4 +408,8 @@ v = [1.0, 0.0, 0.0]
 adjoint_sens(lorenz_fx_trans!, caca1!, caca2, caca2, traj, tvec, pvec, v, λ_traj=λ_traj)
 forward_over_adjoint_sens(v, lorenz_fx_trans!, lorenz_fp_trans!, lorenz_fxx!, traj, λ_traj, tvec, pvec)
 #forward_over_adjoint_sens(v, lorenz_fx_trans!, caca2, lorenz_fxx!, traj, λ_traj, tvec, pvec)
-println(Calculus.hessian(terminal_condition,x0))
+H_calc = Calculus.hessian(terminal_condition,x0)
+show(stdout, "text/plain", H_calc)
+println("")
+# finite differences (just in case...)
+println(Calculus.derivative(terminal_condition_scalar, 1.0))
