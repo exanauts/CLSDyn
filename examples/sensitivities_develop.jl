@@ -2,6 +2,7 @@ using LinearAlgebra
 using ForwardDiff
 using Plots
 using Calculus
+using FiniteDifferences
 
 function lorenz_rhs!(dx, x, p, t)
     σ = p[1]
@@ -53,7 +54,7 @@ function lorenz_fp_trans!(df, dp, x, p, t)
     df[3] += -x[3]*dp[3]
 end
 
-function lorenz_fxx_FOO!(df, z, u, x, p, t)
+function lorenz_fxx!(df, z, u, x, p, t)
     σ = p[1]
     ρ = p[2]
     β = p[3]
@@ -63,7 +64,7 @@ function lorenz_fxx_FOO!(df, z, u, x, p, t)
     df[3] = -u[1]*z[2]
 end
 
-function lorenz_fxx!(df, w, v, x, p, t)
+function lorenz_fxx_FOO!(df, w, v, x, p, t)
     σ = p[1]
     ρ = p[2]
     β = p[3]
@@ -305,9 +306,9 @@ end
 
 
 # TEST PROBLEM
-tspan=(0.0, 0.01)
+tspan=(0.0, 0.1)
 pvec = [2.0, 1.0, 8.0/3.0]
-pvec = [10.0, 28.0, 8.0/3.0]
+pvec = [10.0, 8.0, 8.0/3.0]
 x0 = [1.0, 1.0, 1.0]
 nsteps = 1000
 
@@ -380,8 +381,7 @@ function terminal_condition(x0)
     return traj[1,end]
 end
 
-function terminal_condition_scalar(x)
-    x0 = [1.0, 1.0, x]
+function terminal_condition_scalar(x0)
     v = [1.0, 0.0, 0.0]
     traj, tvec = rk4(lorenz_rhs!, x0, pvec, tspan, nsteps)
     λ, μ = adjoint_sens(lorenz_fx_trans!, caca1!, caca2, caca2, traj, tvec, pvec, v)
@@ -408,8 +408,7 @@ v = [1.0, 0.0, 0.0]
 adjoint_sens(lorenz_fx_trans!, caca1!, caca2, caca2, traj, tvec, pvec, v, λ_traj=λ_traj)
 forward_over_adjoint_sens(v, lorenz_fx_trans!, lorenz_fp_trans!, lorenz_fxx!, traj, λ_traj, tvec, pvec)
 #forward_over_adjoint_sens(v, lorenz_fx_trans!, caca2, lorenz_fxx!, traj, λ_traj, tvec, pvec)
-H_calc = Calculus.hessian(terminal_condition,x0)
-show(stdout, "text/plain", H_calc)
-println("")
 # finite differences (just in case...)
-println(Calculus.derivative(terminal_condition_scalar, 1.0))
+println(grad(central_fdm(5, 1), terminal_condition_scalar, x0))
+
+
