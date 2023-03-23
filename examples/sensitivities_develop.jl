@@ -54,7 +54,7 @@ function lorenz_fp_trans!(df, dp, x, p, t)
     df[3] += -x[3]*dp[3]
 end
 
-function lorenz_fxx!(df, z, u, x, p, t)
+function lorenz_fxx!(df, u, z, x, p, t)
     σ = p[1]
     ρ = p[2]
     β = p[3]
@@ -64,15 +64,6 @@ function lorenz_fxx!(df, z, u, x, p, t)
     df[3] = -u[1]*z[2]
 end
 
-function lorenz_fxx_FOO!(df, w, v, x, p, t)
-    σ = p[1]
-    ρ = p[2]
-    β = p[3]
-
-    df[1] = 0.0
-    df[2] = -w[1]*v[3] - w[3]*v[1]
-    df[3] = w[1]*v[2] + w[2]*v[1]
-end
 
 function rk4_step!(
     xnew::AbstractArray,
@@ -248,6 +239,8 @@ Compute forward over adjoint sensitivities given a perturbation direction, v.
 """
 function forward_over_adjoint_sens(
     v::AbstractVector,
+    fx::Function,
+    fp::Function,
     fx_trans::Function,
     fp_trans::Function,
     fxx_trans::Function,
@@ -266,7 +259,7 @@ function forward_over_adjoint_sens(
     # we first need to compute the trajectory of the TLM given direction
     # perhaps we can compute this externally such that we do not assume
     # it had not been computed.
-    tlm_traj  = tlm(fx_trans, fp_trans, v, traj, tvec, p)
+    tlm_traj  = tlm(fx, fp, v, traj, tvec, p)
 
     # preallocate vectors
     σ0 = zeros(xdim)
@@ -284,7 +277,7 @@ function forward_over_adjoint_sens(
         fxx_vec = zeros(xdim)
         
         fx_trans(fx_vec, σ, x, p, t)
-        fxx_trans(fxx_vec, λ, δx, x, p, t)
+        fxx_trans(fxx_vec, δx, λ, x, p, t)
 
         dσ .= fx_vec + fxx_vec
     end
@@ -306,9 +299,9 @@ end
 
 
 # TEST PROBLEM
-tspan=(0.0, 0.1)
+tspan=(0.0, 0.5)
 pvec = [2.0, 1.0, 8.0/3.0]
-pvec = [10.0, 8.0, 8.0/3.0]
+#pvec = [10.0, 8.0, 8.0/3.0]
 x0 = [1.0, 1.0, 1.0]
 nsteps = 1000
 
@@ -403,12 +396,22 @@ println(Calculus.gradient(fint_p,pvec))
 
 
 println("Test second-order adjoint (terminal condition w.r.t x0)")
-v = [1.0, 0.0, 0.0]
+λ0 = [1.0, 0.0, 0.0]
 λ_traj = similar(traj)
-adjoint_sens(lorenz_fx_trans!, caca1!, caca2, caca2, traj, tvec, pvec, v, λ_traj=λ_traj)
-forward_over_adjoint_sens(v, lorenz_fx_trans!, lorenz_fp_trans!, lorenz_fxx!, traj, λ_traj, tvec, pvec)
-#forward_over_adjoint_sens(v, lorenz_fx_trans!, caca2, lorenz_fxx!, traj, λ_traj, tvec, pvec)
+adjoint_sens(lorenz_fx_trans!, caca1!, caca2, caca2, traj, tvec, pvec, λ0, λ_traj=λ_traj)
+
+# compute Hv
+v = [1.0, 0.0, 0.0]
+forward_over_adjoint_sens(v, lorenz_fx!, lorenz_fp!, lorenz_fx_trans!, lorenz_fp_trans!, lorenz_fxx!, traj, λ_traj, tvec, pvec)
+
+v = [0.0, 1.0, 0.0]
+forward_over_adjoint_sens(v, lorenz_fx!, lorenz_fp!, lorenz_fx_trans!, lorenz_fp_trans!, lorenz_fxx!, traj, λ_traj, tvec, pvec)
+
+v = [0.0, 0.0, 1.0]
+forward_over_adjoint_sens(v, lorenz_fx!, lorenz_fp!, lorenz_fx_trans!, lorenz_fp_trans!, lorenz_fxx!, traj, λ_traj, tvec, pvec)
+
 # finite differences (just in case...)
-println(grad(central_fdm(5, 1), terminal_condition_scalar, x0))
+H_calc = Calculus.hessian(terminal_condition,x0)
+show(stdout, "text/plain", H_calc)
 
 
