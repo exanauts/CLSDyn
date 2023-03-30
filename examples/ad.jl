@@ -39,30 +39,19 @@ function rk4_step!(
     x[4] = xold + dt*k[3]
     rhs!(k[4], x[4], p, t[4])
     xnew .= xold .+ (dt/6)*k[1] .+ (dt/3)*k[2] .+ (dt/3)*k[3] .+ (dt/6)*k[4]
+    return nothing
 end
 
-function rk4(dynamics::Dynamics)
+function rk4!(dynamics::Dynamics)
     """
         The function f is of the form
         f(dx, x, p, t)
     """
     dynamics.traj[:,1] .= dynamics.x0
-    for dynamics.step=1:(dynamics.nsteps - 1)
+    for dynamics.step in 1:(dynamics.nsteps - 1)
         rk4_step!(dynamics)
     end
-    return (dynamics.traj, dynamics.tvec)
-end
-
-function adj_rk4(dynamics::Dynamics)
-    """
-        The function f is of the form
-        f(dx, x, p, t)
-    """
-    dynamics.traj[:,1] .= dynamics.x0
-    for dynamics.step in 1:dynamics.nsteps-1
-        rk4_step!(dynamics)
-    end
-    return (dynamics.traj, dynamics.tvec)
+    return nothing
 end
 
 # It follows user code
@@ -70,7 +59,6 @@ end
 mutable struct Lorenz <: Dynamics
     x0::Vector{Float64}
     p::Vector{Float64}
-    tspan::Tuple{Float64, Float64}
     nsteps::Int
     step::Int
     traj::Matrix{Float64}
@@ -81,16 +69,16 @@ mutable struct Lorenz <: Dynamics
     t::Vector{Float64}
 end
 
-function Lorenz(x0, pvec, tspan, nsteps)
+function Lorenz(x0, pvec, tspan, dt, nsteps)
     ndim = length(x0)
     traj = zeros((ndim, nsteps))
-    dt = (tspan[2] - tspan[1])/nsteps
+    # dt = (tspan[2] - tspan[1])/nsteps
     tvec = collect(range(start=tspan[1], stop=tspan[2], length=nsteps))
     ndim = length(x0)
     k = [zeros(ndim), zeros(ndim), zeros(ndim), zeros(ndim)]
     x = [zeros(ndim), zeros(ndim), zeros(ndim), zeros(ndim)]
     t = zeros(4)
-    return Lorenz(x0, pvec, tspan, nsteps, 0, traj, tvec, dt, k, x, t)
+    return Lorenz(x0, pvec, nsteps, 0, traj, tvec, dt, k, x, t)
 end
 
 function rhs!(dx, x, p, t)
@@ -101,6 +89,7 @@ function rhs!(dx, x, p, t)
     dx[1] = σ*(x[2] - x[1])
     dx[2] = x[1]*(ρ - x[3]) - x[2]
     dx[3] = x[1]*x[2] - β*x[3]
+    return nothing
 end
 
 
@@ -110,36 +99,73 @@ pvec = [2.0, 1.0, 8.0/3.0]
 pvec = [10.0, 8.0, 8.0/3.0]
 x0 = [1.0, 1.0, 1.0]
 nsteps = 1000
+dt = (tspan[2] - tspan[1])/nsteps
 
 idx_var = 1
 
-lorenz = Lorenz(x0, pvec, tspan, nsteps)
-traj, tvec = rk4(lorenz)
+lorenz = Lorenz(x0, pvec, tspan, dt, nsteps)
+rk4!(lorenz)
 
 r(x) = (x[1]^ 2) ./ 2.0
 
-function numerical_integration(lorenz::Lorenz)
-    traj, tvec = rk4(lorenz)
-    val = 0.0
+function numerical_integration(val::Array{Float64}, lorenz::Lorenz)
+    rk4!(lorenz)
+    val[1] = 0.0
     for i=1:(lorenz.nsteps-1)
-        val += (tvec[i+1] - tvec[i])*r(traj[:, i+1])
+        val[1] += (lorenz.tvec[i+1] - lorenz.tvec[i])*r(lorenz.traj[:, i+1])
     end
-    return val
+    return nothing
 end
 
-lorenz = Lorenz(x0, pvec, tspan, nsteps)
-dlorenz = Lorenz(zeros(3), zeros(3), tspan, nsteps)
-Enzyme.autodiff(Reverse, numerical_integration, Active, Duplicated(lorenz, dlorenz))
+# Finite difference
+h = 1e-6
+lorenz = Lorenz(x0, pvec, tspan, dt, nsteps)
+fdlorenz = Lorenz([1.0+h, 1.0, 1.0], pvec, tspan, dt, nsteps)
 
-println("Gradient: ", dlorenz.x0)
+val = zeros(1)
+fdval = zeros(1)
+numerical_integration(val, lorenz)
+numerical_integration(fdval, fdlorenz)
+println("FD gradient: ", (fdval[1]-val[1])/h)
 
-# revolve = Revolve{Lorenz}(nsteps, nsteps; verbose=1)
-# Checkpointing.reset(revolve)
-# dlorenz = Zygote.gradient(cost, lorenz, revolve)
+# Reverse
+lorenz = Lorenz(x0, pvec, tspan, dt, nsteps)
+rlorenz = Lorenz(zeros(3), zeros(3), (0.0,0.0), 0.0, nsteps)
 
+val = zeros(1)
+rval = ones(1)
+Enzyme.autodiff(Reverse, numerical_integration, Const, Duplicated(val, rval), Duplicated(lorenz, rlorenz))
 
+println("Reverse AD gradient: ", rlorenz.x0[1])
 
-# ps = plot(tvec, traj[idx_var,:])
+# Forward
+lorenz = Lorenz(x0, pvec, tspan, dt, nsteps)
+florenz = Lorenz(Float64[1.0, 0.0, 0.0], zeros(3), (0.0,0.0), 0.0, nsteps)
 
+val = zeros(1)
+fval = zeros(1)
 
+Enzyme.autodiff(Forward, numerical_integration, Const, Duplicated(val, fval), Duplicated(lorenz, florenz))
 
+println("Forward AD gradient: ", fval[1])
+
+# Forward over reverse
+lorenz = Lorenz(x0, pvec, tspan, dt, nsteps)
+florenz = Lorenz(Float64[1.0, 0.0, 0.0], zeros(3), (0.0,0.0), 0.0, nsteps)
+rlorenz = Lorenz(zeros(3), zeros(3), (0.0,0.0), 0.0, nsteps)
+rflorenz = Lorenz(zeros(3), zeros(3), (0.0,0.0), 0.0, nsteps)
+
+val = zeros(1)
+fval = zeros(1)
+
+rval = ones(1)
+rfval = zeros(1)
+
+Enzyme.autodiff(
+    Forward,
+    (x,y) -> Enzyme.autodiff_deferred(Reverse, numerical_integration, Const, x, y),
+    Const,
+    Duplicated(Duplicated(val, rval), Duplicated(fval, rfval)),
+    Duplicated(Duplicated(lorenz, rlorenz), Duplicated(florenz, rflorenz)),
+)
+println("FoR AD: ", fval[1], " ", rlorenz.x0[1])
