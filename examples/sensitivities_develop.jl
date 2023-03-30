@@ -64,6 +64,42 @@ function lorenz_fxx!(df, u, z, x, p, t)
     df[3] = -u[1]*z[2]
 end
 
+function lorenz_fxp!(df, u, z, x, p, t)
+    # Note: this is the transpose of the above function
+    #   u = δθ
+    #   z = λ
+    σ = p[1]
+    ρ = p[2]
+    β = p[3]
+
+    df[1] = -z[1]*u[1] + z[2]*u[2]
+    df[2] = z[1]*u[1]
+    df[3] = -z[3]*u[3]
+end
+
+function lorenz_fpx!(df, u, z, x, p, t)
+    # Note: this is the transpose of the above function
+    #   u = δx
+    #   z = λ
+    σ = p[1]
+    ρ = p[2]
+    β = p[3]
+
+    df[1] = -z[1]*u[1] + z[1]*u[2]
+    df[2] = z[2]*u[1]
+    df[3] = -z[3]*u[3]
+end
+
+function lorenz_fpp!(df, u, z, x, p, t)
+    σ = p[1]
+    ρ = p[2]
+    β = p[3]
+
+    df[1] = 0.0
+    df[2] = 0.0
+    df[3] = 0.0
+end
+
 
 function rk4_step!(
     xnew::AbstractArray,
@@ -88,7 +124,13 @@ function rk4_step!(
     xnew .= xold .+ (dt/6)*k1 .+ (dt/3)*k2 .+ (dt/3)*k3 .+ (dt/6)*k4
 end
 
-function rk4(f::Function, x0::AbstractArray, p::AbstractArray, tspan::Tuple, nsteps::Int)
+function rk4(
+    f::Function,
+    x0::AbstractArray,
+    p::AbstractArray,
+    tspan::Tuple,
+    nsteps::Int
+)
     """
         The function f is of the form
         f(dx, x, p, t)
@@ -231,7 +273,6 @@ function adjoint_sens(
     return (λ, μ)
 end
 
-
 """
     forward_over_adjoint_sens
 
@@ -296,6 +337,114 @@ function forward_over_adjoint_sens(
     println(σ)
 end
 
+"""
+    forward_over_adjoint_sens2
+
+Compute forward over adjoint sensitivities given a perturbation direction, v.
+"""
+function forward_over_adjoint_sens2(
+    v::AbstractVector,
+    δθ::AbstractVector,
+    fx::Function,
+    fp::Function,
+    fx_trans::Function,
+    fp_trans::Function,
+    fxx_trans::Function,
+    fxp_trans::Function,
+    fpx_trans::Function,
+    fpp_trans::Function,
+    rxx::Function,
+    rxp::Function,
+    rpx::Function,
+    rpp::Function,
+    traj::AbstractArray,
+    λ_traj::AbstractArray,
+    tvec::AbstractArray,
+    p::AbstractArray,
+)
+
+    # obtain dimensions
+    xdim = size(traj, 1)
+    pdim = size(p, 1)
+    @assert xdim == size(λ0, 1)
+    nsteps = size(tvec, 1)
+
+    # we first need to compute the trajectory of the TLM given direction
+    # perhaps we can compute this externally such that we do not assume
+    # it had not been computed.
+    tlm_traj  = tlm(fx, fp, v, traj, tvec, p, dp=δθ)
+
+    # preallocate vectors
+    σ0 = zeros(xdim)
+    τ0 = zeros(pdim)
+    u0 = vcat(σ0, τ0)
+    u = similar(u0)
+    u .= u0
+    unext = similar(u0)
+    
+    # then we form the residual function
+    function fwd_adj_sys!(du, u, ctx, t)
+        # retrieve information
+        x, λ, δx = ctx
+        σ = @view(u[1:xdim])
+        τ = @view(u[xdim + 1:end])
+        dσ = @view(du[1:xdim])
+        dτ = @view(du[xdim + 1:end])
+
+        # NOTE: do not preallocate here. will be moved to context
+        fx_vec = zeros(xdim)
+        fxx_vec = zeros(xdim)
+        fxp_vec = zeros(xdim)
+        rxx_vec = zeros(xdim)
+        rxp_vec = zeros(xdim)
+        
+        # mat-vec products
+        fx_trans(fx_vec, σ, x, p, t)
+        fxx_trans(fxx_vec, δx, λ, x, p, t)
+        fxp_trans(fxp_vec, δθ, λ, x, p, t)
+        rxx(rxx_vec, δx, x, p)
+        rxp(rxp_vec, δθ, x, p)
+
+        dσ .= fx_vec + fxx_vec + fxp_vec + rxx_vec + rxp_vec
+
+        # NOTE: do not preallocate here. will be moved to context
+        fx_vec = zeros(xdim)
+        fp_vec = zeros(pdim)
+        fpx_vec = zeros(pdim)
+        fpp_vec = zeros(pdim)
+        rpx_vec = zeros(pdim)
+        rpp_vec = zeros(pdim)
+
+        # mat-vec products
+        fp_trans(fp_vec, σ, x, p, t)
+        fpx_trans(fpx_vec, δx, λ, x, p, t)
+        fpp_trans(fpp_vec, δθ, λ, x, p, t)
+        rpx(rpx_vec, δx, x, p)
+        rpp(rpp_vec, δθ, x, p)
+
+        dτ .= fp_vec + fpx_vec + fpp_vec + rpx_vec + rpp_vec
+    end
+    
+    nsteps = size(tvec, 1)
+    for i = reverse(2:nsteps)
+        t = tvec[i]
+        x = @view(traj[:, i])
+        λ = @view(λ_traj[:, i])
+        δx = @view(tlm_traj[:, i])
+        ctx = (x, λ, δx)        
+        dt = tvec[i] - tvec[i - 1]
+        rk4_step!(unext, fwd_adj_sys!, u, ctx, t, dt)
+        u .= unext
+    end
+    # this is the sensitivity of the cost function with respect to the
+    # parameters
+    σ = u[1:xdim]
+    # this is the sensitivity of the cost function with respect to the
+    # initial condition
+    τ = u[xdim + 1:end]
+    return (σ, τ)
+end
+
 
 
 # TEST PROBLEM
@@ -344,6 +493,8 @@ println("Test first-order adjoint (terminal condition w.r.t x0)")
 # r(x, p) -> functional cost (integral from t0 to tf).
 # w(x(tf), p) -> terminal cost.
 
+# Functional, gradient of functional, and Hessian-vec products
+
 r(x, p) = (x[1] .^ 2) ./ 2
 function rx(dr, x, p)
     dr[1] = x[1]
@@ -351,11 +502,26 @@ end
 function rp(dr, x, p)
 end
 
+function rxx(dr, dx, x, p)
+    dr[1] = dx[1]
+end
+
+function rxp(dr, dx, x, p)
+end
+
+function rpx(dr, dx, x, p)
+end
+
+function rpp(dr, dx, x, p)
+end
+
 function caca1!(df, dx, x, p, t)
 end
 
 function caca2(dr, x, p)
 end
+
+# Start adjoint computations
 
 λ0 = [1.0, 0.0, 0.0]
 λ, μ = adjoint_sens(lorenz_fx_trans!, caca1!, caca2, caca2, traj, tvec, pvec, λ0)
@@ -398,20 +564,77 @@ println(Calculus.gradient(fint_p,pvec))
 println("Test second-order adjoint (terminal condition w.r.t x0)")
 λ0 = [1.0, 0.0, 0.0]
 λ_traj = similar(traj)
-adjoint_sens(lorenz_fx_trans!, caca1!, caca2, caca2, traj, tvec, pvec, λ0, λ_traj=λ_traj)
+adjoint_sens(lorenz_fx_trans!, caca1!, caca2, caca2, traj, tvec,
+             pvec, λ0, λ_traj=λ_traj)
 
 # compute Hv
 v = [1.0, 0.0, 0.0]
-forward_over_adjoint_sens(v, lorenz_fx!, lorenz_fp!, lorenz_fx_trans!, lorenz_fp_trans!, lorenz_fxx!, traj, λ_traj, tvec, pvec)
+forward_over_adjoint_sens(v, lorenz_fx!, lorenz_fp!, lorenz_fx_trans!,
+                          lorenz_fp_trans!, lorenz_fxx!, traj, λ_traj, tvec, pvec)
 
 v = [0.0, 1.0, 0.0]
-forward_over_adjoint_sens(v, lorenz_fx!, lorenz_fp!, lorenz_fx_trans!, lorenz_fp_trans!, lorenz_fxx!, traj, λ_traj, tvec, pvec)
+forward_over_adjoint_sens(v, lorenz_fx!, lorenz_fp!, lorenz_fx_trans!,
+                          lorenz_fp_trans!, lorenz_fxx!, traj, λ_traj, tvec, pvec)
 
 v = [0.0, 0.0, 1.0]
-forward_over_adjoint_sens(v, lorenz_fx!, lorenz_fp!, lorenz_fx_trans!, lorenz_fp_trans!, lorenz_fxx!, traj, λ_traj, tvec, pvec)
+forward_over_adjoint_sens(v, lorenz_fx!, lorenz_fp!, lorenz_fx_trans!,
+                          lorenz_fp_trans!, lorenz_fxx!, traj, λ_traj, tvec, pvec)
 
 # finite differences (just in case...)
 H_calc = Calculus.hessian(terminal_condition,x0)
 show(stdout, "text/plain", H_calc)
+println("")
+println("Test second-order adjoint (functional w.r.t x0, p)")
 
+# compute Hv
+λ0 = [0.0, 0.0, 0.0]
+λ_traj = similar(traj)
+adjoint_sens(lorenz_fx_trans!, lorenz_fp_trans!, rx, rp, traj, tvec,
+             pvec, λ0, λ_traj=λ_traj)
+
+
+v = [0.0, 0.0, 0.0]
+δθ = [1.0, 0.0, 0.0]
+σ1, τ1 = forward_over_adjoint_sens2(v, δθ, lorenz_fx!, lorenz_fp!,
+                           lorenz_fx_trans!,
+                           lorenz_fp_trans!,
+                           lorenz_fxx!, lorenz_fxp!,
+                           lorenz_fpx!, lorenz_fpp!,
+                           rxx, rxp, rpx, rpp,
+                           traj, λ_traj, tvec, pvec)
+
+v = [0.0, 0.0, 0.0]
+δθ = [0.0, 1.0, 0.0]
+σ2, τ2 = forward_over_adjoint_sens2(v, δθ, lorenz_fx!, lorenz_fp!,
+                           lorenz_fx_trans!,
+                           lorenz_fp_trans!,
+                           lorenz_fxx!, lorenz_fxp!,
+                           lorenz_fpx!, lorenz_fpp!,
+                           rxx, rxp, rpx, rpp,
+                           traj, λ_traj, tvec, pvec)
+
+v = [0.0, 0.0, 0.0]
+δθ = [0.0, 0.0, 1.0]
+σ3, τ3 = forward_over_adjoint_sens2(v, δθ, lorenz_fx!, lorenz_fp!,
+                           lorenz_fx_trans!,
+                           lorenz_fp_trans!,
+                           lorenz_fxx!, lorenz_fxp!,
+                           lorenz_fpx!, lorenz_fpp!,
+                           rxx, rxp, rpx, rpp,
+                           traj, λ_traj, tvec, pvec)
+
+# finite differences
+H_x0 = Calculus.hessian(fint_x,x0)
+H_p = Calculus.hessian(fint_p,pvec)
+
+println(σ1)
+println(σ2)
+println(σ3)
+show(stdout, "text/plain", H_x0)
+println("")
+println(τ1)
+println(τ2)
+println(τ3)
+show(stdout, "text/plain", H_p)
+println("")
 
