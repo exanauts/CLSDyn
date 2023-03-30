@@ -1,4 +1,5 @@
 using Enzyme
+using ForwardDiff
 
 function f(x,y)
     y .= x .* x
@@ -69,3 +70,15 @@ autodiff(Forward, (x, y) -> Enzyme.autodiff_deferred(
 @assert Frx[1] == Ffy[1]
 @assert fy[1] == Fy[1]
 @assert fy[1] == rx[1]
+
+# Reverse over Forward using ForwardDiff
+x   = ForwardDiff.Dual.([2.0], [1.0])
+rx   = ForwardDiff.Dual.([0.0], [0.0])
+
+y  = ForwardDiff.Dual.([0.0], [0.0])
+ry   = ForwardDiff.Dual.([0.0], [1.0])
+
+autodiff(Reverse, f, Const, Duplicated(x, rx), Duplicated(y, ry))
+
+@assert ForwardDiff.value.(rx)[1] == Frx[1]
+@assert ForwardDiff.partials.(rx)[1][1] == Fy[1]

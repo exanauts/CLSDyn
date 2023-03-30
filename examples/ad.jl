@@ -6,7 +6,7 @@ using FiniteDifferences
 using Enzyme
 
 # Lorenz system
-abstract type Dynamics end
+abstract type Dynamics{FT} end
 
 rhs!(::Dynamics, dx, x, p, t) = error("rhs! not implemented")
 
@@ -56,28 +56,28 @@ end
 
 # It follows user code
 
-mutable struct Lorenz <: Dynamics
-    x0::Vector{Float64}
-    p::Vector{Float64}
+mutable struct Lorenz{FT} <: Dynamics{FT}
+    x0::Vector{FT}
+    p::Vector{FT}
     nsteps::Int
     step::Int
-    traj::Matrix{Float64}
-    tvec::Vector{Float64}
-    dt::Float64
-    k::Vector{Vector{Float64}}
-    x::Vector{Vector{Float64}}
-    t::Vector{Float64}
+    traj::Matrix{FT}
+    tvec::Vector{FT}
+    dt::FT
+    k::Vector{Vector{FT}}
+    x::Vector{Vector{FT}}
+    t::Vector{FT}
 end
 
-function Lorenz(x0, pvec, tspan, dt, nsteps)
+function Lorenz{FT}(x0::Vector{FT}, pvec::Vector{FT}, tspan::Tuple{FT,FT}, dt::FT, nsteps::Int) where FT
     ndim = length(x0)
-    traj = zeros((ndim, nsteps))
+    traj = zeros(FT, (ndim, nsteps))
     # dt = (tspan[2] - tspan[1])/nsteps
-    tvec = collect(range(start=tspan[1], stop=tspan[2], length=nsteps))
+    tvec = FT.(collect(range(start=tspan[1], stop=tspan[2], length=nsteps)))
     ndim = length(x0)
-    k = [zeros(ndim), zeros(ndim), zeros(ndim), zeros(ndim)]
-    x = [zeros(ndim), zeros(ndim), zeros(ndim), zeros(ndim)]
-    t = zeros(4)
+    k = [zeros(FT, ndim), zeros(FT, ndim), zeros(FT, ndim), zeros(FT, ndim)]
+    x = [zeros(FT, ndim), zeros(FT, ndim), zeros(FT, ndim), zeros(FT, ndim)]
+    t = zeros(FT, 4)
     return Lorenz(x0, pvec, nsteps, 0, traj, tvec, dt, k, x, t)
 end
 
@@ -103,12 +103,12 @@ dt = (tspan[2] - tspan[1])/nsteps
 
 idx_var = 1
 
-lorenz = Lorenz(x0, pvec, tspan, dt, nsteps)
+lorenz = Lorenz{Float64}(x0, pvec, tspan, dt, nsteps)
 rk4!(lorenz)
 
 r(x) = (x[1]^ 2) ./ 2.0
 
-function numerical_integration(val::Array{Float64}, lorenz::Lorenz)
+function numerical_integration(val::Vector{FT}, lorenz::Lorenz{FT}) where {FT}
     rk4!(lorenz)
     val[1] = 0.0
     for i=1:(lorenz.nsteps-1)
@@ -119,8 +119,8 @@ end
 
 # Finite difference
 h = 1e-6
-lorenz = Lorenz(x0, pvec, tspan, dt, nsteps)
-fdlorenz = Lorenz([1.0+h, 1.0, 1.0], pvec, tspan, dt, nsteps)
+lorenz = Lorenz{Float64}(x0, pvec, tspan, dt, nsteps)
+fdlorenz = Lorenz{Float64}([1.0+h, 1.0, 1.0], pvec, tspan, dt, nsteps)
 
 val = zeros(1)
 fdval = zeros(1)
@@ -129,8 +129,8 @@ numerical_integration(fdval, fdlorenz)
 println("FD gradient: ", (fdval[1]-val[1])/h)
 
 # Reverse
-lorenz = Lorenz(x0, pvec, tspan, dt, nsteps)
-rlorenz = Lorenz(zeros(3), zeros(3), (0.0,0.0), 0.0, nsteps)
+lorenz = Lorenz{Float64}(x0, pvec, tspan, dt, nsteps)
+rlorenz = Lorenz{Float64}(zeros(3), zeros(3), (0.0,0.0), 0.0, nsteps)
 
 val = zeros(1)
 rval = ones(1)
@@ -139,8 +139,8 @@ Enzyme.autodiff(Reverse, numerical_integration, Const, Duplicated(val, rval), Du
 println("Reverse AD gradient: ", rlorenz.x0[1])
 
 # Forward
-lorenz = Lorenz(x0, pvec, tspan, dt, nsteps)
-florenz = Lorenz(Float64[1.0, 0.0, 0.0], zeros(3), (0.0,0.0), 0.0, nsteps)
+lorenz = Lorenz{Float64}(x0, pvec, tspan, dt, nsteps)
+florenz = Lorenz{Float64}(Float64[1.0, 0.0, 0.0], zeros(3), (0.0,0.0), 0.0, nsteps)
 
 val = zeros(1)
 fval = zeros(1)
@@ -149,23 +149,47 @@ Enzyme.autodiff(Forward, numerical_integration, Const, Duplicated(val, fval), Du
 
 println("Forward AD gradient: ", fval[1])
 
-# Forward over reverse
-lorenz = Lorenz(x0, pvec, tspan, dt, nsteps)
-florenz = Lorenz(Float64[1.0, 0.0, 0.0], zeros(3), (0.0,0.0), 0.0, nsteps)
-rlorenz = Lorenz(zeros(3), zeros(3), (0.0,0.0), 0.0, nsteps)
-rflorenz = Lorenz(zeros(3), zeros(3), (0.0,0.0), 0.0, nsteps)
+# BROKEN: Forward over reverse
+# lorenz = Lorenz(x0, pvec, tspan, dt, nsteps)
+# florenz = Lorenz(Float64[1.0, 0.0, 0.0], zeros(3), (0.0,0.0), 0.0, nsteps)
+# rlorenz = Lorenz(zeros(3), zeros(3), (0.0,0.0), 0.0, nsteps)
+# rflorenz = Lorenz(zeros(3), zeros(3), (0.0,0.0), 0.0, nsteps)
 
-val = zeros(1)
-fval = zeros(1)
+# val = zeros(1)
+# fval = zeros(1)
 
-rval = ones(1)
-rfval = zeros(1)
+# rval = ones(1)
+# rfval = zeros(1)
 
-Enzyme.autodiff(
-    Forward,
-    (x,y) -> Enzyme.autodiff_deferred(Reverse, numerical_integration, Const, x, y),
-    Const,
-    Duplicated(Duplicated(val, rval), Duplicated(fval, rfval)),
-    Duplicated(Duplicated(lorenz, rlorenz), Duplicated(florenz, rflorenz)),
+# Enzyme.autodiff(
+#     Forward,
+#     (x,y) -> Enzyme.autodiff_deferred(Reverse, numerical_integration, Const, x, y),
+#     Const,
+#     Duplicated(Duplicated(val, rval), Duplicated(fval, rfval)),
+#     Duplicated(Duplicated(lorenz, rlorenz), Duplicated(florenz, rflorenz)),
+# )
+# println("FoR AD: ", fval[1], " ", rlorenz.x0[1])
+
+# Reverse over Forward using ForwardDiff
+
+dtspan = (ForwardDiff.Dual(tspan[1], 0.0), ForwardDiff.Dual(tspan[2], 0.0))
+dpvec = ForwardDiff.Dual.([10.0, 8.0, 8.0/3.0], [0.0, 0.0, 0.0])
+dx0 = ForwardDiff.Dual.([1.0, 1.0, 1.0], [1.0, 0.0, 0.0])
+nsteps = 1000
+dt = ForwardDiff.Dual((tspan[2] - tspan[1])/nsteps, 0.0)
+
+lorenz = Lorenz{ForwardDiff.Dual{Nothing, Float64, 1}}(dx0, dpvec, dtspan, dt, nsteps)
+rlorenz = Lorenz{ForwardDiff.Dual{Nothing, Float64, 1}}(
+    ForwardDiff.Dual.(zeros(3),zeros(3)),
+    ForwardDiff.Dual.(zeros(3),zeros(3)),
+    (ForwardDiff.Dual(0.0, 0.0), ForwardDiff.Dual(0.0, 0.0)),
+    ForwardDiff.Dual(0.0, 0.0),
+    nsteps
 )
-println("FoR AD: ", fval[1], " ", rlorenz.x0[1])
+
+val = zeros(ForwardDiff.Dual{Nothing, Float64,1}, 1)
+rval = ForwardDiff.Dual.([0.0], [1.0])
+Enzyme.autodiff(Reverse, numerical_integration, Const, Duplicated(val, rval), Duplicated(lorenz, rlorenz))
+
+println("Reverse over Forward AD second-order: ", ForwardDiff.value.(rlorenz.x0[1]))
+println("Reverse over Forward AD gradient: ", ForwardDiff.partials.(rlorenz.x0[1])[1])
