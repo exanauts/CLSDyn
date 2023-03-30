@@ -94,9 +94,9 @@ end
 
 
 # TEST PROBLEM
-tspan=(0.0, 0.1)
+tspan=(0.0, 0.5)
 pvec = [2.0, 1.0, 8.0/3.0]
-pvec = [10.0, 8.0, 8.0/3.0]
+# pvec = [10.0, 8.0, 8.0/3.0]
 x0 = [1.0, 1.0, 1.0]
 nsteps = 1000
 dt = (tspan[2] - tspan[1])/nsteps
@@ -126,6 +126,7 @@ val = zeros(1)
 fdval = zeros(1)
 numerical_integration(val, lorenz)
 numerical_integration(fdval, fdlorenz)
+println("Function evaluation: ", val[1])
 println("FD gradient: ", (fdval[1]-val[1])/h)
 
 # Reverse
@@ -173,12 +174,12 @@ println("Forward AD gradient: ", fval[1])
 # Reverse over Forward using ForwardDiff
 
 dtspan = (ForwardDiff.Dual(tspan[1], 0.0), ForwardDiff.Dual(tspan[2], 0.0))
-dpvec = ForwardDiff.Dual.([10.0, 8.0, 8.0/3.0], [0.0, 0.0, 0.0])
+dpvec = ForwardDiff.Dual.([2.0, 1.0, 8.0/3.0], [0.0, 0.0, 0.0])
 dx0 = ForwardDiff.Dual.([1.0, 1.0, 1.0], [1.0, 0.0, 0.0])
 nsteps = 1000
-dt = ForwardDiff.Dual((tspan[2] - tspan[1])/nsteps, 0.0)
+ddt = ForwardDiff.Dual((tspan[2] - tspan[1])/nsteps, 0.0)
 
-lorenz = Lorenz{ForwardDiff.Dual{Nothing, Float64, 1}}(dx0, dpvec, dtspan, dt, nsteps)
+lorenz = Lorenz{ForwardDiff.Dual{Nothing, Float64, 1}}(dx0, dpvec, dtspan, ddt, nsteps)
 rlorenz = Lorenz{ForwardDiff.Dual{Nothing, Float64, 1}}(
     ForwardDiff.Dual.(zeros(3),zeros(3)),
     ForwardDiff.Dual.(zeros(3),zeros(3)),
@@ -191,5 +192,18 @@ val = zeros(ForwardDiff.Dual{Nothing, Float64,1}, 1)
 rval = ForwardDiff.Dual.([0.0], [1.0])
 Enzyme.autodiff(Reverse, numerical_integration, Const, Duplicated(val, rval), Duplicated(lorenz, rlorenz))
 
-println("Reverse over Forward AD second-order: ", ForwardDiff.value.(rlorenz.x0[1]))
 println("Reverse over Forward AD gradient: ", ForwardDiff.partials.(rlorenz.x0[1])[1])
+println("Reverse over Forward AD second-order: ", ForwardDiff.value.(rlorenz.x0[1]))
+# Finite difference
+h = 1e-2
+lorenz = Lorenz{Float64}(x0, pvec, tspan, dt, nsteps)
+fdlorenz = Lorenz{Float64}([1.0+h, 1.0, 1.0], pvec, tspan, dt, nsteps)
+ffdlorenz = Lorenz{Float64}([1.0+2*h, 1.0, 1.0], pvec, tspan, dt, nsteps)
+
+val = zeros(1)
+fdval = zeros(1)
+ffdval = zeros(1)
+numerical_integration(val, lorenz)
+numerical_integration(fdval, fdlorenz)
+numerical_integration(ffdval, ffdlorenz)
+println("FD second-order: ", (ffdval[1]-2*fdval[1]+val[1])/(h*h))
