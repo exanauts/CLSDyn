@@ -5,6 +5,8 @@ import PowerModels
 
 const _WS = 1.0
 
+checkarguments(f, argtypes) = length(methods(f, argtypes)) > 0
+
 struct PSystem
     # number of buses
     nbus::Int
@@ -22,6 +24,29 @@ struct PSystem
     gen_inertia::Vector{Float64}
     # generator damping (ngen x 1)
     gen_damping::Vector{Float64}
+end
+
+mutable struct SystemDynamics
+    psys::PSystem
+    pvec::AbstractArray
+    rhs!::Function
+
+    function SystemDynamics(psys::PSystem, input_rhs::Function)
+        # in this function we assemble the parameters into a vector
+        # and store it in the SystemDynamics struct. This is so that
+        # the interfaces to gradients and hessians become clean.
+        pvec = vcat(psys.vmag, psys.pmec, psys.gen_inertia, psys.gen_damping)
+
+        # the input rhs function should be of the form
+        #   rhs!(dx, x, p, t, psys)
+        # and here we create a wrapper.
+        # we might need to enforce type signature with checkarguments.
+        function rhs!(dx, x, p, t)
+            input_rhs(dx, x, p, t, psys)
+        end
+        new(psys, pvec, rhs!)
+    end
+
 end
 
 include("ivp.jl")

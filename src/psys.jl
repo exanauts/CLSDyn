@@ -21,6 +21,32 @@ function classic_resfun!(dx::AbstractVector, x::AbstractVector, ps::PSystem)
     end
 end
 
+function classic_resfun2!(
+    dx::AbstractVector,
+    x::AbstractVector,
+    p::AbstractVector,
+    t::Float64,
+    ps::PSystem
+)
+
+    #vcat(psys.vmag, psys.pmec, psys.gen_inertia, psys.gen_damping
+    ngen = ps.ngen
+    yred = ps.yred
+    vmag = @view p[1:ngen]
+    pmec = @view p[ngen + 1:2*ngen]
+    H = @view p[2*ngen + 1:3*ngen]
+    D = @view p[3*ngen + 1:4*ngen]
+
+    pelec = zeros(eltype(x), ngen)
+    w = x[1:ngen]
+    delta = x[ngen + 1:end]
+    compute_pelec(pelec, vmag, delta, yred)
+    for i in 1:ngen
+        dx[i] = (1.0/(2.0*H[i]))*(pmec[i] - pelec[i] - D[i]*w[i])
+        dx[ngen + i] = _WS*w[i]
+    end
+end
+
 """
     compute_pelec(pelec::AbstractVector, vmag::AbstractVector, vang::AbstractVector,
                   yred::AbstractMatrix)
