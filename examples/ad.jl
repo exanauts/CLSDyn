@@ -2,7 +2,6 @@ using LinearAlgebra
 using ForwardDiff
 using Plots
 using Calculus
-using FiniteDifferences
 using Enzyme
 
 # Lorenz system
@@ -30,13 +29,13 @@ function rk4_step!(
     t[2] = tvec + 0.5*dt
     t[3] = tvec + 0.5*dt
     t[4] = tvec + dt
-    x[1] = xold
+    x[1] .= xold
     rhs!(k[1], x[1], p, t[1])
-    x[2] = xold + (dt/2)*k[1]
+    x[2] .= xold + (dt/2)*k[1]
     rhs!(k[2], x[2], p, t[2])
-    x[3] = xold + (dt/2)*k[2]
+    x[3] .= xold + (dt/2)*k[2]
     rhs!(k[3], x[3], p, t[3])
-    x[4] = xold + dt*k[3]
+    x[4] .= xold + dt*k[3]
     rhs!(k[4], x[4], p, t[4])
     xnew .= xold .+ (dt/6)*k[1] .+ (dt/3)*k[2] .+ (dt/3)*k[3] .+ (dt/6)*k[4]
     return nothing
