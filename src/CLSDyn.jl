@@ -49,6 +49,56 @@ mutable struct SystemDynamics
 
 end
 
+# IVP struct
+abstract type IVPAbstract end
+struct IVP <: IVPAbstract
+    # number of steps
+    nsteps::Int
+    # step size
+    dt::Float64
+    # initial condition
+    x0::AbstractArray
+    # time span
+    tspan::Tuple{Float64,Float64}
+    # method
+    method::ODEMethod
+    # system dynamics
+    sys::SystemDynamics
+
+    function IVP(
+        nsteps::Int,
+        dt::Float64,
+        x0::AbstractArray,
+        tspan::Tuple{Float64,Float64},
+        method::ODEMethod,
+        sys::SystemDynamics
+    )
+        new(nsteps, dt, x0, tspan, method, sys)
+    end
+end
+
+# ODE method struct
+abstract type ODEMethod end
+mutable struct RK <: ODEMethod
+    # number of stages
+    #nstages::Int
+    # coefficients
+    #a::Matrix{Float64}
+    #b::Vector{Float64}
+    #c::Vector{Float64}
+    # temporary storage
+    k::Union{Vector{Vector{Float64}}, Nothing}
+    function RK()
+        k = nothing
+        new(k)
+    end
+end
+
+function preallocate!(ivp::IVP)
+    # preallocate storage for k vectors
+    ivp.method.k = [zeros(size(ivp.x0)) for i in 1:4]
+end
+
 include("ivp.jl")
 include("psys.jl")
 
