@@ -49,13 +49,12 @@ mutable struct SystemDynamics
 
 end
 
-# IVP struct
 abstract type IVPAbstract end
+abstract type ODEMethod end
+
 struct IVP <: IVPAbstract
     # number of steps
     nsteps::Int
-    # step size
-    dt::Float64
     # initial condition
     x0::AbstractArray
     # time span
@@ -67,26 +66,16 @@ struct IVP <: IVPAbstract
 
     function IVP(
         nsteps::Int,
-        dt::Float64,
         x0::AbstractArray,
         tspan::Tuple{Float64,Float64},
         method::ODEMethod,
         sys::SystemDynamics
     )
-        new(nsteps, dt, x0, tspan, method, sys)
+        new(nsteps, x0, tspan, method, sys)
     end
 end
 
-# ODE method struct
-abstract type ODEMethod end
 mutable struct RK <: ODEMethod
-    # number of stages
-    #nstages::Int
-    # coefficients
-    #a::Matrix{Float64}
-    #b::Vector{Float64}
-    #c::Vector{Float64}
-    # temporary storage
     k::Union{Vector{Vector{Float64}}, Nothing}
     function RK()
         k = nothing
@@ -101,5 +90,9 @@ end
 
 include("ivp.jl")
 include("psys.jl")
+
+# Export symbols
+export PSystem, SystemDynamics
+export IVP, RK
 
 end # module CLSDyn
