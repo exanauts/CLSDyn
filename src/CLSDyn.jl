@@ -7,7 +7,9 @@ const _WS = 1.0
 
 checkarguments(f, argtypes) = length(methods(f, argtypes)) > 0
 
-struct PSystem
+abstract type SystemContext end
+
+struct PSystem <: SystemContext
     # number of buses
     nbus::Int
     # number of generators
@@ -27,27 +29,57 @@ struct PSystem
 end
 
 mutable struct SystemDynamics
-    psys::PSystem
+    ctx::SystemContext
     pvec::AbstractArray
     rhs!::Function
 
-    function SystemDynamics(psys::PSystem, input_rhs::Function)
+    fx!::Union{Function, Nothing}
+    fp!::Union{Function, Nothing}
+    fx_transpose!::Union{Function, Nothing}
+    fp_transpose!::Union{Function, Nothing}
+    fxx!::Union{Function, Nothing}
+    fpp!::Union{Function, Nothing}
+    fxp!::Union{Function, Nothing}
+
+    function SystemDynamics(ctx::SystemContext, pvec::AbstractArray, input_rhs::Function)
+        function rhs!(dx, x, p, t)
+            input_rhs(dx, x, p, t, ctx)
+        end
+        new(ctx, pvec, rhs!, nothing, nothing, nothing, nothing, nothing, nothing, nothing)
+    end
+
+    function SystemDynamics(ctx::PSystem, input_rhs::Function)
         # in this function we assemble the parameters into a vector
         # and store it in the SystemDynamics struct. This is so that
         # the interfaces to gradients and hessians become clean.
-        pvec = vcat(psys.vmag, psys.pmec, psys.gen_inertia, psys.gen_damping)
+        pvec = vcat(ctx.vmag, ctx.pmec, ctx.gen_inertia, ctx.gen_damping)
 
         # the input rhs function should be of the form
-        #   rhs!(dx, x, p, t, psys)
+        #   rhs!(dx, x, p, t, ctx)
         # and here we create a wrapper.
         # we might need to enforce type signature with checkarguments.
         function rhs!(dx, x, p, t)
-            input_rhs(dx, x, p, t, psys)
+            input_rhs(dx, x, p, t, ctx)
         end
-        new(psys, pvec, rhs!)
+        new(ctx, pvec, rhs!, nothing, nothing, nothing, nothing, nothing, nothing, nothing)
     end
 
 end
+
+function set_fx!(sys::SystemDynamics, input_fx::Function)
+    function fx!(fx, dx, x, p, t)
+        input_fx(fx, dx, x, p, t, sys.ctx)
+    end
+    sys.fx! = fx!
+end
+
+function set_fp!(sys::SystemDynamics, input_fp::Function)
+    function fp!(fp, dx, x, p, t)
+        input_fp(fp, dx, x, p, t, sys.ctx)
+    end
+    sys.fp! = fp!
+end
+
 
 abstract type IVPAbstract end
 abstract type ODEMethod end
@@ -90,6 +122,7 @@ end
 
 include("ivp.jl")
 include("psys.jl")
+include("sensitivities.jl")
 
 # Export symbols
 export PSystem, SystemDynamics
