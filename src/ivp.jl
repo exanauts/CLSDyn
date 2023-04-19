@@ -39,7 +39,7 @@ end
 function step!(xnew::AbstractArray,
                f::Function,
                xold::AbstractArray,
-               p::AbstractArray,
+               p,
                t::Float64,
                dt::Float64,
                method::RK)

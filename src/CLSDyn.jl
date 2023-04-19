@@ -40,12 +40,13 @@ mutable struct SystemDynamics
     fxx!::Union{Function, Nothing}
     fpp!::Union{Function, Nothing}
     fxp!::Union{Function, Nothing}
+    fpx!::Union{Function, Nothing}
 
     function SystemDynamics(ctx::SystemContext, pvec::AbstractArray, input_rhs::Function)
         function rhs!(dx, x, p, t)
             input_rhs(dx, x, p, t, ctx)
         end
-        new(ctx, pvec, rhs!, nothing, nothing, nothing, nothing, nothing, nothing, nothing)
+        new(ctx, pvec, rhs!, nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing)
     end
 
     function SystemDynamics(ctx::PSystem, input_rhs::Function)
@@ -61,7 +62,7 @@ mutable struct SystemDynamics
         function rhs!(dx, x, p, t)
             input_rhs(dx, x, p, t, ctx)
         end
-        new(ctx, pvec, rhs!, nothing, nothing, nothing, nothing, nothing, nothing, nothing)
+        new(ctx, pvec, rhs!, nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing)
     end
 
 end
@@ -82,6 +83,10 @@ mutable struct CostFunctional
     # integral term gradients
     rx!::Union{Function, Nothing}
     rp!::Union{Function, Nothing}
+    rxx!::Union{Function, Nothing}
+    rpp!::Union{Function, Nothing}
+    rxp!::Union{Function, Nothing}
+    rpx!::Union{Function, Nothing}
 
     function CostFunctional(
             sys::SystemDynamics, 
@@ -108,8 +113,7 @@ mutable struct CostFunctional
         else
             w! = nothing
         end
-
-        new(sys, r!, w!, nothing, nothing)
+        new(sys, r!, w!, nothing, nothing, nothing, nothing, nothing, nothing)
     end
 end
 
@@ -118,45 +122,101 @@ end
 # better way to do this (that does not involve unnecessary complexity).
 
 function set_fx!(sys::SystemDynamics, input_fx::Function)
-    function fx!(fx, dx, x, p, t)
-        input_fx(fx, dx, x, p, t, sys.ctx)
+    function fx!(df, dx, x, p, t)
+        input_fx(df, dx, x, p, t, sys.ctx)
     end
     sys.fx! = fx!
 end
 
 function set_fp!(sys::SystemDynamics, input_fp::Function)
-    function fp!(fp, dx, x, p, t)
-        input_fp(fp, dx, x, p, t, sys.ctx)
+    function fp!(df, dx, x, p, t)
+        input_fp(df, dx, x, p, t, sys.ctx)
     end
     sys.fp! = fp!
 end
 
 function set_fx_trans!(sys::SystemDynamics, input_fx_trans::Function)
-    function fx_trans!(fx, dx, x, p, t)
-        input_fx_trans(fx, dx, x, p, t, sys.ctx)
+    function fx_trans!(df, dx, x, p, t)
+        input_fx_trans(df, dx, x, p, t, sys.ctx)
     end
     sys.fx_transpose! = fx_trans!
 end
 
 function set_fp_trans!(sys::SystemDynamics, input_fp_trans::Function)
-    function fp_trans!(fx, dx, x, p, t)
-        input_fp_trans(fx, dx, x, p, t, sys.ctx)
+    function fp_trans!(df, dx, x, p, t)
+        input_fp_trans(df, dx, x, p, t, sys.ctx)
     end
     sys.fp_transpose! = fp_trans!
 end
 
+function set_fxx!(sys::SystemDynamics, input_fxx::Function)
+    function fxx!(df, u, z, x, p, t)
+        input_fxx(df, u, z, x, p, t, sys.ctx)
+    end
+    sys.fxx! = fxx!
+end
+
+function set_fpp!(sys::SystemDynamics, input_fpp::Function)
+    function fpp!(df, u, z, x, p, t)
+        input_fpp(df, u, z, x, p, t, sys.ctx)
+    end
+    sys.fpp! = fpp!
+end
+
+function set_fxp!(sys::SystemDynamics, input_fxp::Function)
+    function fxp!(df, u, z, x, p, t)
+        input_fxp(df, u, z, x, p, t, sys.ctx)
+    end
+    sys.fxp! = fxp!
+end
+
+function set_fpx!(sys::SystemDynamics, input_fpx::Function)
+    function fpx!(df, u, z, x, p, t)
+        input_fpx(df, u, z, x, p, t, sys.ctx)
+    end
+    sys.fpx! = fpx!
+end
+
 function set_rx!(cf::CostFunctional, input_rx::Function)
-    function rx!(rx, x, p, t)
-        input_rx(rx, x, p, t, cf.sys.ctx)
+    function rx!(dr, x, p, t)
+        input_rx(dr, x, p, t, cf.sys.ctx)
     end
     cf.rx! = rx!
 end
 
 function set_rp!(cf::CostFunctional, input_rp::Function)
-    function rp!(rp, x, p, t)
-        input_rp(rp, x, p, t, cf.sys.ctx)
+    function rp!(dr, x, p, t)
+        input_rp(dr, x, p, t, cf.sys.ctx)
     end
     cf.rp! = rp!
+end
+
+function set_rxx!(cf::CostFunctional, input_rxx::Function)
+    function rxx!(dr, dx, x, p, t)
+        input_rxx(dr, dx, x, p, t, cf.sys.ctx)
+    end
+    cf.rxx! = rxx!
+end
+
+function set_rpp!(cf::CostFunctional, input_rpp::Function)
+    function rpp!(dr, dx, x, p, t)
+        input_rpp(dr, dx, x, p, t, cf.sys.ctx)
+    end
+    cf.rpp! = rpp!
+end
+
+function set_rxp!(cf::CostFunctional, input_rxp::Function)
+    function rxp!(dr, dx, x, p, t)
+        input_rxp(dr, dx, x, p, t, cf.sys.ctx)
+    end
+    cf.rxp! = rxp!
+end
+
+function set_rpx!(cf::CostFunctional, input_rpx::Function)
+    function rpx!(dr, dx, x, p, t)
+        input_rpx(dr, dx, x, p, t, cf.sys.ctx)
+    end
+    cf.rpx! = rpx!
 end
 
 

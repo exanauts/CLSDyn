@@ -185,3 +185,138 @@ function adjoint_sens(
         )
     return sol
 end
+
+
+"""
+    forward_over_adjoint_sens
+
+Compute forward over adjoint sensitivities given a perturbation direction, v.
+"""
+function forward_over_adjoint_sens(
+    v::AbstractVector,
+    δθ::AbstractVector,
+    fx::Function,
+    fp::Function,
+    fx_trans::Function,
+    fp_trans::Function,
+    fxx_trans::Function,
+    fxp_trans::Function,
+    fpx_trans::Function,
+    fpp_trans::Function,
+    rxx::Function,
+    rxp::Function,
+    rpx::Function,
+    rpp::Function,
+    traj::AbstractArray,
+    tlm_traj::AbstractArray,
+    λ_traj::AbstractArray,
+    tvec::AbstractArray,
+    p::AbstractArray,
+    method::ODEMethod
+)
+
+    # obtain dimensions
+    xdim = size(traj, 1)
+    pdim = size(p, 1)
+    nsteps = size(tvec, 1)
+
+    # we first need to compute the trajectory of the TLM given direction
+    # perhaps we can compute this externally such that we do not assume
+    # it had not been computed.
+
+    # preallocate vectors
+    σ0 = zeros(xdim)
+    τ0 = zeros(pdim)
+    u0 = vcat(σ0, τ0)
+    u = similar(u0)
+    u .= u0
+    unext = similar(u0)
+    
+    # preallocate mat-vec products
+    fx_vec = zeros(xdim)
+    fxx_vec = zeros(xdim)
+    fxp_vec = zeros(xdim)
+    rxx_vec = zeros(xdim)
+    rxp_vec = zeros(xdim)
+    
+    fp_vec = zeros(pdim)
+    fpx_vec = zeros(pdim)
+    fpp_vec = zeros(pdim)
+    rpx_vec = zeros(pdim)
+    rpp_vec = zeros(pdim)
+
+    # then we form the residual function
+    function fwd_adj_sys!(du, u, ctx, t)
+        # retrieve information
+        x, λ, δx = ctx
+        σ = @view(u[1:xdim])
+        τ = @view(u[xdim + 1:end])
+        dσ = @view(du[1:xdim])
+        dτ = @view(du[xdim + 1:end])
+
+        # mat-vec products
+        fx_trans(fx_vec, σ, x, p, t)
+        fxx_trans(fxx_vec, δx, λ, x, p, t)
+        fxp_trans(fxp_vec, δθ, λ, x, p, t)
+        rxx(rxx_vec, δx, x, p, t)
+        rxp(rxp_vec, δθ, x, p, t)
+
+        dσ .= fx_vec + fxx_vec + fxp_vec + rxx_vec + rxp_vec
+
+        # mat-vec products
+        fp_trans(fp_vec, σ, x, p, t)
+        fpx_trans(fpx_vec, δx, λ, x, p, t)
+        fpp_trans(fpp_vec, δθ, λ, x, p, t)
+        rpx(rpx_vec, δx, x, p, t)
+        rpp(rpp_vec, δθ, x, p, t)
+
+        dτ .= fp_vec + fpx_vec + fpp_vec + rpx_vec + rpp_vec
+    end
+    
+    nsteps = size(tvec, 1)
+    for i = reverse(2:nsteps)
+        t = tvec[i]
+        x = @view(traj[:, i])
+        λ = @view(λ_traj[:, i])
+        δx = @view(tlm_traj[:, i])
+        ctx = (x, λ, δx)        
+        dt = tvec[i] - tvec[i - 1]
+        #rk4_step!(unext, fwd_adj_sys!, u, ctx, t, dt)
+        step!(unext, fwd_adj_sys!, u, ctx, t, dt, method)
+        u .= unext
+    end
+    # this is the sensitivity of the cost function with respect to the
+    # parameters
+    σ = u[1:xdim]
+    # this is the sensitivity of the cost function with respect to the
+    # initial condition
+    τ = u[xdim + 1:end]
+    return (σ, τ)
+end
+
+function forward_over_adjoint(
+        ivp::IVP,
+        cost::CostFunctional,
+        traj::AbstractArray,
+        λ_traj::AbstractArray,
+        tvec::AbstractArray,
+        p::AbstractArray,
+        v::AbstractArray,
+        δθ::AbstractArray
+    )
+    sys = ivp.sys
+    
+    preallocate!(ivp)
+    tlm_traj  = tlm(sys.fx!, sys.fp!, v, traj, tvec, p, ivp.method, dp=δθ)
+    preallocate!(ivp, size(traj, 1) + size(sys.pvec, 1))
+    forward_over_adjoint_sens(
+        v, δθ,
+        sys.fx!, sys.fp!,
+        sys.fx_transpose!, sys.fp_transpose!,
+        sys.fxx!, sys.fxp!,
+        sys.fpx!, sys.fpp!,
+        cost.rxx!, cost.rxp!, cost.rpx!, cost.rpp!,
+        traj, tlm_traj, λ_traj, tvec, p, ivp.method
+    )
+end
+
