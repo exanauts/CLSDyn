@@ -8,6 +8,8 @@ using CLSDyn
 
 const DATA_DIR = joinpath(artifact"ExaData", "ExaData")
 
-include("lorenz.jl")
-include("power_systems.jl")
+@testset "CLSDyn" begin
+    include("lorenz.jl")
+    include("power_systems.jl")
+end
 

@@ -199,8 +199,8 @@ end
     @testset "Second-order sensitivities" begin
         λ_traj = similar(traj)
         CLSDyn.adjoint_sens(problem, cost, traj, tvec, λ0; λ_traj=λ_traj)
-        v = [0.0, 0.0, 0.0]
-        δθ = [1.0, 0.0, 0.0]
+        v = [1.0, 0.0, 0.0]
+        δθ = [0.0, 0.0, 0.0]
         σ, τ = CLSDyn.forward_over_adjoint(
             problem,
             cost,
@@ -214,7 +214,20 @@ end
         @test size(σ) == (nx, )
         @test size(τ) == (np, )
         H = FiniteDiff.finite_difference_hessian(fint_x, x0)
-        @test_broken σ ≈ H * δθ atol=1e-4
+        @test σ ≈ H * v atol=1e-4
+
+        v = [0.0, 0.0, 0.0]
+        δθ = [1.0, 0.0, 0.0]
+        σ, τ = CLSDyn.forward_over_adjoint(
+            problem,
+            cost,
+            traj,
+            λ_traj,
+            tvec,
+            pvec,
+            v,
+            δθ
+        )
         H = FiniteDiff.finite_difference_hessian(fint_p, pvec)
         @test τ ≈ H * δθ atol=1e-4
     end
