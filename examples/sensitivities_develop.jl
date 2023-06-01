@@ -593,8 +593,8 @@ adjoint_sens(lorenz_fx_trans!, lorenz_fp_trans!, rx, rp, traj, tvec,
              pvec, λ0, λ_traj=λ_traj)
 
 
-v = [0.0, 0.0, 0.0]
-δθ = [1.0, 0.0, 0.0]
+v = [1.0, 0.0, 0.0]
+δθ = [0.0, 0.0, 0.0]
 σ1, τ1 = forward_over_adjoint_sens2(v, δθ, lorenz_fx!, lorenz_fp!,
                            lorenz_fx_trans!,
                            lorenz_fp_trans!,
@@ -603,8 +603,8 @@ v = [0.0, 0.0, 0.0]
                            rxx, rxp, rpx, rpp,
                            traj, λ_traj, tvec, pvec)
 
-v = [0.0, 0.0, 0.0]
-δθ = [0.0, 1.0, 0.0]
+v = [0.0, 1.0, 0.0]
+δθ = [0.0, 0.0, 0.0]
 σ2, τ2 = forward_over_adjoint_sens2(v, δθ, lorenz_fx!, lorenz_fp!,
                            lorenz_fx_trans!,
                            lorenz_fp_trans!,
@@ -613,8 +613,8 @@ v = [0.0, 0.0, 0.0]
                            rxx, rxp, rpx, rpp,
                            traj, λ_traj, tvec, pvec)
 
-v = [0.0, 0.0, 0.0]
-δθ = [0.0, 0.0, 1.0]
+v = [0.0, 0.0, 1.0]
+δθ = [0.0, 0.0, 0.0]
 σ3, τ3 = forward_over_adjoint_sens2(v, δθ, lorenz_fx!, lorenz_fp!,
                            lorenz_fx_trans!,
                            lorenz_fp_trans!,

@@ -9,25 +9,50 @@ checkarguments(f, argtypes) = length(methods(f, argtypes)) > 0
 
 abstract type SystemContext end
 
+"""
+    PSystem
+
+Holds information related to a power system, including the number of buses, generators,
+and loads, as well as the voltage magnitude vector, reduced admittance matrix, 
+mechanical power, generator inertia, and generator damping.
+
+# Fields
+
+- `nbus::Int`: Number of buses
+- `ngen::Int`: Number of generators
+- `nload::Int`: Number of loads
+- `vmag::Vector{Float64}`: Voltage magnitude vector
+- `yred::Matrix{ComplexF64}`: Reduced admittance matrix
+- `pmec::Vector{Float64}`: Mechanical power vector
+- `gen_inertia::Vector{Float64}`: Generator inertia vector
+- `gen_damping::Vector{Float64}`: Generator damping vector
+
+"""
 struct PSystem <: SystemContext
-    # number of buses
     nbus::Int
-    # number of generators
     ngen::Int
-    # number of loads
     nload::Int
-    # voltage magnitude vector
     vmag::Vector{Float64}
-    # reduced admittance matrix
     yred::Matrix{ComplexF64}
-    # mechanical power (ngen x 1
     pmec::Vector{Float64}
-    # generator inertia (ngen x 1)
     gen_inertia::Vector{Float64}
-    # generator damping (ngen x 1)
     gen_damping::Vector{Float64}
 end
 
+"""
+    SystemDynamics
+
+Represents the system dynamics, with functions for the right-hand side of the differential 
+equations, their first and second derivatives, and the associated parameters vector.
+
+# Fields
+
+- `ctx::SystemContext`: The context of the system
+- `pvec::AbstractArray`: Vector of parameters
+- `rhs!::Function`: Function for the right-hand side of the system's dynamics
+- Other derivative functions
+
+"""
 mutable struct SystemDynamics
     ctx::SystemContext
     pvec::AbstractArray
@@ -67,6 +92,20 @@ mutable struct SystemDynamics
 
 end
 
+"""
+    CostFunctional
+
+Encapsulates the cost functional associated with the system dynamics, including the integral term 
+and terminal condition, and their respective gradient computations.
+
+# Fields
+
+- `sys::SystemDynamics`: Reference to the system dynamics
+- `r!::Union{Function, Nothing}`: Function for the integral term
+- `w!::Union{Function, Nothing}`: Function for the terminal condition
+- Other gradient functions
+
+"""
 mutable struct CostFunctional
     # system dynamics reference
     # NOTE: It seems we need to have a reference to the system dynamics
@@ -224,6 +263,21 @@ end
 abstract type IVPAbstract end
 abstract type ODEMethod end
 
+"""
+    IVP
+
+Represents an initial value problem (IVP) that consists of the number of steps, initial condition,
+time span, method of ODE solver, and system dynamics.
+
+# Fields
+
+- `nsteps::Int`: Number of steps
+- `x0::AbstractArray`: Initial condition
+- `tspan::Tuple{Float64,Float64}`: Time span
+- `method::ODEMethod`: ODE solver method
+- `sys::SystemDynamics`: System dynamics
+
+"""
 struct IVP <: IVPAbstract
     # number of steps
     nsteps::Int
@@ -255,9 +309,14 @@ mutable struct RK <: ODEMethod
     end
 end
 
+function preallocate!(rk::RK, dim::Int)
+    rk.k = [zeros(dim) for i in 1:4]
+end
+
 function preallocate!(ivp::IVP)
     # preallocate storage for k vectors
-    ivp.method.k = [zeros(size(ivp.x0)) for i in 1:4]
+    #ivp.method.k = [zeros(size(ivp.x0)) for i in 1:4]
+    preallocate!(ivp.method, size(ivp.x0, 1))
 end
 
 function preallocate!(ivp::IVP, dim::Int)
