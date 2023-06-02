@@ -139,7 +139,7 @@ mutable struct CostFunctional
 
         if r_input != nothing
             function r!(x, p, t)
-                r!(x, p, t, ctx)
+                r_input(x, p, t, ctx)
             end
         else
             r! = nothing
@@ -147,7 +147,7 @@ mutable struct CostFunctional
 
         if w_input != nothing
             function w!(x, p, t)
-                w!(x, p, t, ctx)
+                w_input(x, p, t, ctx)
             end
         else
             w! = nothing
