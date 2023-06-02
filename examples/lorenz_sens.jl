@@ -56,6 +56,7 @@ CLSDyn.set_fpx!(sys, lorenz_fpx!)
 CLSDyn.set_fpp!(sys, lorenz_fpp!)
 
 function gradient(p, problem::CLSDyn.IVP, cost::CLSDyn.CostFunctional)
+    problem.sys.pvec .= p
     traj, tvec = CLSDyn.solve(problem)
     λ0 = [0.0, 0.0, 0.0]
     λ, μ = CLSDyn.adjoint_sens(problem, cost, traj, tvec, λ0)
@@ -63,6 +64,7 @@ function gradient(p, problem::CLSDyn.IVP, cost::CLSDyn.CostFunctional)
 end
 
 function hessian(p, problem::CLSDyn.IVP, cost::CLSDyn.CostFunctional)
+    problem.sys.pvec .= p
     pdim = length(p)
     hess = zeros(pdim, pdim)
 
@@ -120,12 +122,13 @@ end
 function NLPModels.obj(nlp::DynamicNLP, x::AbstractVector)
     increment!(nlp, :neval_obj)
     # Temporary hack using quadrature
+    nlp.ivp.sys.pvec .= x
     traj, tvec = CLSDyn.solve(nlp.ivp)
     val = 0.0
     nsteps = length(tvec)
     robj = nlp.cost.r!
     for i=1:(nsteps-1)
-        val += (tvec[i + 1] - tvec[i])*robj(traj[:, i + 1], pvec, tvec[i + 1])
+        val += (tvec[i + 1] - tvec[i])*robj(traj[:, i + 1], x, tvec[i + 1])
     end
     return val
 end
@@ -137,6 +140,8 @@ function NLPModels.grad!(nlp::DynamicNLP, x::AbstractVector, gx::AbstractVector)
 end
 
 using MadNLP
+function MadNLP.jac_dense!(nlp::DynamicNLP, x::AbstractVector, jac::AbstractMatrix)
+end
 lvar = [1.0, 0.5, 1.0]
 uvar = [3.0, 1.5, 3.0]
 nlp = DynamicNLP(problem, cost, lvar, uvar)
@@ -146,8 +151,13 @@ println(NLPModels.obj(nlp, p0))
 NLPModels.grad!(nlp, p0, gx)
 println(gx)
 
-#ips = MadNLP.MadNLPSolver(nlp; print_level=MadNLP.INFO,
-#            kkt_system=MadNLP.DENSE_KKT_SYSTEM,
-#            hessian_approximation=MadNLP.DENSE_BFGS,
-#            linear_solver=LapackCPUSolver,)
-#MadNLP.solve!(ips)
+# Verify gradient
+using FiniteDiff
+gx_fd = FiniteDiff.finite_difference_gradient(x -> NLPModels.obj(nlp, x), p0)
+println(gx_fd)
+
+ips = MadNLP.MadNLPSolver(nlp; print_level=MadNLP.INFO,
+            kkt_system=MadNLP.DENSE_KKT_SYSTEM,
+            hessian_approximation=MadNLP.DENSE_BFGS,
+            linear_solver=LapackCPUSolver,)
+MadNLP.solve!(ips)
