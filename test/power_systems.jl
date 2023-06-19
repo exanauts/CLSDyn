@@ -3,7 +3,7 @@
     case = "case9"
     case_file = joinpath(DATA_DIR, "$(case).m")
 
-    x0, ps = CLSDyn.load_matpower(case_file)
+    x0, pvec, ps = CLSDyn.load_matpower(case_file)
     f!(du,u,p,t) = CLSDyn.classic_resfun!(du, u, ps)
 
     u0 = copy(x0)
@@ -12,7 +12,6 @@
     tspan=(0.0,5.0)
 
     # RK4 from CLSDyn
-    pvec = zeros(2) #dummy
     traj, tvec = CLSDyn.rk4(f!, u0, pvec, tspan, nsteps)
 
     # system dynamics
