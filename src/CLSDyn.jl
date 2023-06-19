@@ -1,5 +1,6 @@
 module CLSDyn
 using ForwardDiff
+using NLPModels
 
 import PowerModels
 
@@ -327,9 +328,11 @@ end
 include("ivp.jl")
 include("psys.jl")
 include("sensitivities.jl")
+include("nlp.jl")
 
 # Export symbols
 export PSystem, SystemDynamics
+export DynamicNLP
 export IVP, RK
 
 end # module CLSDyn
