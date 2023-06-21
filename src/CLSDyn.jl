@@ -1,5 +1,6 @@
 module CLSDyn
 using ForwardDiff
+using NLPModels
 
 import PowerModels
 
@@ -139,7 +140,7 @@ mutable struct CostFunctional
 
         if r_input != nothing
             function r!(x, p, t)
-                r!(x, p, t, ctx)
+                r_input(x, p, t, ctx)
             end
         else
             r! = nothing
@@ -147,7 +148,7 @@ mutable struct CostFunctional
 
         if w_input != nothing
             function w!(x, p, t)
-                w!(x, p, t, ctx)
+                w_input(x, p, t, ctx)
             end
         else
             w! = nothing
@@ -327,9 +328,11 @@ end
 include("ivp.jl")
 include("psys.jl")
 include("sensitivities.jl")
+include("nlp.jl")
 
 # Export symbols
 export PSystem, SystemDynamics
+export DynamicNLP
 export IVP, RK
 
 end # module CLSDyn
