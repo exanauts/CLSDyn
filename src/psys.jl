@@ -65,11 +65,12 @@ function classic_jacobian(
             if i != j
                 J[i, ngen + j] = -vmag[i]*vmag[j]*(real(yred[i, j])*sin(delta[i] - delta[j]) -
                             imag(yred[i, j])*cos(vang[i] - vang[j]))
-                J[i, ngen + j] = (1/(2*H[i]))*J[i, ngen +j]
+                J[i, ngen + j] = (1/(2*H[i]))*J[i, ngen + j]
                 J[i, ngen + i] += vmag[i]*vmag[j]*(real(yred[i, j])*sin(delta[i] - delta[j]) -
                             imag(yred[i, j])*cos(delta[i] - delta[j]))
             end
         J[i, ngen + i] = (1/(2*H[i]))*J[i, ngen + i]
+        end
     end
 end
 
