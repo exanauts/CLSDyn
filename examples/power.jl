@@ -4,7 +4,7 @@ using ForwardDiff
 using LazyArtifacts
 const DATA_DIR = joinpath(artifact"ExaData", "ExaData")
 
-case = "case3"
+case = "case9"
 case_file = joinpath(DATA_DIR, "$(case).m")
 
 x0, pvec, ps = CLSDyn.load_matpower(case_file)
@@ -18,11 +18,22 @@ tspan=(0.0,5.0)
 # system dynamics
 sys = CLSDyn.SystemDynamics(ps, CLSDyn.classic_resfun2!)
 
-
-
 # sensitivity of initial conditions w.r.t p
-println(CLSDyn.get_x0(ps, pvec))
 Jx0 = CLSDyn.full_x0_sens(ps, pvec)
-println(Jx0)
 f(p) = CLSDyn.get_x0(ps, p)
 Jx0_fd = FiniteDiff.finite_difference_jacobian(f, pvec)
+
+# sensitivity of r.h.s. w.r.t. x
+
+function rhs_x(x)
+    dx = zeros(Float64, length(x))
+    sys.rhs!(dx, x, pvec, 0.0)
+    return dx
+end
+
+Jrhs_x = zeros(Float64, length(x0), length(x0))
+CLSDyn.classic_jacobian!(Jrhs_x, x0, pvec, 0.0, ps)
+println(Jrhs_x)
+
+Jrhs_x_fd = FiniteDiff.finite_difference_jacobian(rhs_x, x0)
+println(Jrhs_x_fd)
