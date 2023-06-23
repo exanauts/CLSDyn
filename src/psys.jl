@@ -5,7 +5,7 @@ Compute the residual function for the classic CLS model.
 """
 function classic_resfun!(dx::AbstractVector, x::AbstractVector, ps::PSystem)
     ngen = ps.ngen
-    vmag = ps.vmag
+    emag = ps.emag
     pmec = ps.pmec
     yred = ps.yred
     H = ps.gen_inertia
@@ -14,7 +14,7 @@ function classic_resfun!(dx::AbstractVector, x::AbstractVector, ps::PSystem)
     pelec = zeros(eltype(x), ngen)
     w = x[1:ngen]
     delta = x[ngen + 1:end]
-    compute_pelec(pelec, vmag, delta, yred)
+    compute_pelec(pelec, emag, delta, yred)
     for i in 1:ngen
         dx[i] = (1.0/(2.0*H[i]))*(pmec[i] - pelec[i] - D[i]*w[i])
         dx[ngen + i] = _WS*w[i]
@@ -29,18 +29,21 @@ function classic_resfun2!(
     ps::PSystem
 )
 
-    #vcat(psys.vmag, psys.pmec, psys.gen_inertia, psys.gen_damping
+    # NOTE: In our case, p is a dummy vector and parameters are updated at the beginning
+    # of the simulation. This is because the way that parameters influence the r.h.s. is
+    # not explicit but there are some preprocessing steps which, if implemented in
+    # the r.h.s., would make it slower.
     ngen = ps.ngen
     yred = ps.yred
     H = ps.gen_inertia
     D = ps.gen_damping
-    vmag = ps.vmag
+    emag = ps.emag
     pmec = ps.pmec
 
     pelec = zeros(eltype(x), ngen)
     w = x[1:ngen]
     delta = x[ngen + 1:end]
-    compute_pelec(pelec, vmag, delta, yred)
+    compute_pelec(pelec, emag, delta, yred)
     for i in 1:ngen
         dx[i] = (1.0/(2.0*H[i]))*(pmec[i] - pelec[i] - D[i]*w[i])
         dx[ngen + i] = _WS*w[i]
@@ -59,7 +62,7 @@ function classic_jacobian!(
     H = ps.gen_inertia
     D = ps.gen_damping
     yred = ps.yred
-    vmag = ps.vmag
+    emag = ps.emag
     w = x[1:ngen]
     delta = x[ngen+1:end]
 
@@ -68,10 +71,10 @@ function classic_jacobian!(
         J[ngen + i, i] = _WS
         for j in 1:ngen
             if i != j
-                J[i, ngen + j] = -vmag[i]*vmag[j]*(real(yred[i, j])*sin(delta[i] - delta[j]) -
+                J[i, ngen + j] = -emag[i]*emag[j]*(real(yred[i, j])*sin(delta[i] - delta[j]) -
                             imag(yred[i, j])*cos(delta[i] - delta[j]))
                 J[i, ngen + j] = (1/(2*H[i]))*J[i, ngen + j]
-                J[i, ngen + i] += vmag[i]*vmag[j]*(real(yred[i, j])*sin(delta[i] - delta[j]) -
+                J[i, ngen + i] += emag[i]*emag[j]*(real(yred[i, j])*sin(delta[i] - delta[j]) -
                             imag(yred[i, j])*cos(delta[i] - delta[j]))
             end
         end
@@ -212,6 +215,36 @@ function get_x0(ps::PSystem, pvec::AbstractVector)
     end
     x0 = vcat(w, delta)
     return x0
+end
+
+function set_pvec!(ps::PSystem, pvec::AbstractVector)
+    ngen = ps.ngen
+    emag = zeros(Float64, ngen)
+    eang = zeros(Float64, ngen)
+    pmec = zeros(Float64, ngen)
+    for i=1:ngen
+        vm = pvec[i]
+        va = pvec[ps.ngen + i]
+        p_inj = pvec[2*ps.ngen + i]
+        q_inj = pvec[3*ps.ngen + i]
+
+        xdp = 1.0
+        egen = (vm + p_inj*xdp/vm) + im*(q_inj*xdp/vm)
+
+        emag[i] = abs(egen)
+        eang[i] = angle(egen) + va
+    end
+    x0 = get_x0(ps, pvec)
+    w = x0[1:ngen]
+    delta = x0[ngen+1:end]
+    compute_pelec(pmec, emag, delta, ps.yred)
+    for i=1:ngen
+        pmec[i] += ps.gen_damping[i]*w[i]
+    end
+    for i=1:ngen
+        ps.emag[i] = emag[i]
+        ps.pmec[i] = pmec[i]
+    end
 end
 
 function full_x0_sens(ps::PSystem, pvec::AbstractVector)

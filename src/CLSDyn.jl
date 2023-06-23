@@ -33,7 +33,7 @@ struct PSystem <: SystemContext
     nbus::Int
     ngen::Int
     nload::Int
-    vmag::Vector{Float64}
+    emag::Vector{Float64}
     yred::Matrix{ComplexF64}
     pmec::Vector{Float64}
     gen_inertia::Vector{Float64}
@@ -74,23 +74,6 @@ mutable struct SystemDynamics
         end
         new(ctx, pvec, rhs!, nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing)
     end
-
-    function SystemDynamics(ctx::PSystem, input_rhs::Function)
-        # in this function we assemble the parameters into a vector
-        # and store it in the SystemDynamics struct. This is so that
-        # the interfaces to gradients and hessians become clean.
-        pvec = vcat(ctx.vmag, ctx.pmec, ctx.gen_inertia, ctx.gen_damping)
-
-        # the input rhs function should be of the form
-        #   rhs!(dx, x, p, t, ctx)
-        # and here we create a wrapper.
-        # we might need to enforce type signature with checkarguments.
-        function rhs!(dx, x, p, t)
-            input_rhs(dx, x, p, t, ctx)
-        end
-        new(ctx, pvec, rhs!, nothing, nothing, nothing, nothing, nothing, nothing, nothing, nothing)
-    end
-
 end
 
 """
