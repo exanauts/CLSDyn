@@ -32,10 +32,10 @@ function classic_resfun2!(
     #vcat(psys.vmag, psys.pmec, psys.gen_inertia, psys.gen_damping
     ngen = ps.ngen
     yred = ps.yred
-    vmag = @view p[1:ngen]
-    pmec = @view p[ngen + 1:2*ngen]
-    H = @view p[2*ngen + 1:3*ngen]
-    D = @view p[3*ngen + 1:4*ngen]
+    H = ps.gen_inertia
+    D = ps.gen_damping
+    vmag = ps.vmag
+    pmec = ps.pmec
 
     pelec = zeros(eltype(x), ngen)
     w = x[1:ngen]
@@ -47,7 +47,7 @@ function classic_resfun2!(
     end
 end
 
-function classic_jacobian(
+function classic_jacobian!(
     J::AbstractMatrix,
     x::AbstractVector,
     p::AbstractVector,
@@ -56,6 +56,11 @@ function classic_jacobian(
 )
     """ Jacobian matrix of the classical model """
     ngen = ps.ngen
+    H = ps.gen_inertia
+    D = ps.gen_damping
+    yred = ps.yred
+    vmag = ps.vmag
+    w = x[1:ngen]
     delta = x[ngen+1:end]
 
     for i in 1:ngen
@@ -64,13 +69,13 @@ function classic_jacobian(
         for j in 1:ngen
             if i != j
                 J[i, ngen + j] = -vmag[i]*vmag[j]*(real(yred[i, j])*sin(delta[i] - delta[j]) -
-                            imag(yred[i, j])*cos(vang[i] - vang[j]))
+                            imag(yred[i, j])*cos(delta[i] - delta[j]))
                 J[i, ngen + j] = (1/(2*H[i]))*J[i, ngen + j]
                 J[i, ngen + i] += vmag[i]*vmag[j]*(real(yred[i, j])*sin(delta[i] - delta[j]) -
                             imag(yred[i, j])*cos(delta[i] - delta[j]))
             end
-        J[i, ngen + i] = (1/(2*H[i]))*J[i, ngen + i]
         end
+        J[i, ngen + i] = (1/(2*H[i]))*J[i, ngen + i]
     end
 end
 
