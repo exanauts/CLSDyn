@@ -131,8 +131,8 @@ function load_matpower(casefile)
         YBB[load_bus, load_bus] -= yload
     end
 
-    vmag = zeros(Float64, ngen)
-    vang = zeros(Float64, ngen)
+    emag = zeros(Float64, ngen)
+    eang = zeros(Float64, ngen)
 
     #     [ YAA   YAB ]
     #     [ YBA   YBB ]
@@ -163,8 +163,8 @@ function load_matpower(casefile)
         xdp = 1.0
         egen = (vm + p_inj*xdp/vm) + im*(q_inj*xdp/vm)
 
-        vmag[i] = abs(egen)
-        vang[i] = angle(egen) + va
+        emag[i] = abs(egen)
+        eang[i] = angle(egen) + va
 
         yint = 1/(im*xdp)
         YAA[i, i] += yint
@@ -182,15 +182,15 @@ function load_matpower(casefile)
     gen_damping = zeros(Float64, ngen)
     pmec = zeros(Float64, ngen)
     w = zeros(Float64, ngen) # ws = 1
-    delta = vang
+    delta = eang
 
-    compute_pelec(pmec, vmag, vang, yred)
+    compute_pelec(pmec, emag, delta, yred)
 
     for i=1:ngen
         pmec[i] += gen_damping[i]*w[i]
     end
 
-    ps = PSystem(nbus, ngen, nload, vmag, yred, pmec, gen_inertia, gen_damping)
+    ps = PSystem(nbus, ngen, nload, emag, yred, pmec, gen_inertia, gen_damping)
     x0 = vcat(w, delta)
     return x0, pvec, ps
 end
