@@ -27,10 +27,13 @@ end
 
 function gradient(p, problem::CLSDyn.IVP, cost::CLSDyn.CostFunctional)
     problem.sys.pvec .= p
+    ∇Ψ = zeros(length(p))
+
     traj, tvec = CLSDyn.solve(problem)
-    λ0 = [0.0, 0.0, 0.0]
+    λ0 = zeros(size(traj, 1))
     λ, μ = CLSDyn.adjoint_sens(problem, cost, traj, tvec, λ0)
-    return μ
+    ∇Ψ .= μ
+    return ∇Ψ
 end
 
 function hessian(p, problem::CLSDyn.IVP, cost::CLSDyn.CostFunctional)
@@ -38,7 +41,7 @@ function hessian(p, problem::CLSDyn.IVP, cost::CLSDyn.CostFunctional)
     pdim = length(p)
     hess = zeros(pdim, pdim)
 
-    λ0 = zeros(pdim)
+    λ0 = zeros(size(traj, 1))
     λ_traj = similar(traj)
     CLSDyn.adjoint_sens(problem, cost, traj, tvec, λ0, λ_traj=λ_traj)
     δθ = zeros(pdim)
