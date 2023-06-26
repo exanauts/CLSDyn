@@ -82,6 +82,17 @@ function classic_jacobian!(
     end
 end
 
+function classic_dfdp(
+    dfdp::AbstractMatrix,
+    x::AbstractVector,
+    p::AbstractVector,
+    t::Float64,
+    ps::PSystem
+)
+    ngen = ps.ngen
+
+end
+
 """
     compute_pelec(pelec::AbstractVector, vmag::AbstractVector, vang::AbstractVector,
                   yred::AbstractMatrix)
