@@ -6,7 +6,7 @@ using ForwardDiff
 using LazyArtifacts
 const DATA_DIR = joinpath(artifact"ExaData", "ExaData")
 
-case = "case9"
+case = "case14"
 case_file = joinpath(DATA_DIR, "$(case).m")
 
 x0, pvec, ps = CLSDyn.load_matpower(case_file)
@@ -123,9 +123,14 @@ println(gx_fd)
 gx = zeros(Float64, length(pvec))
 gx .= gradient_power(pvec, problem, cost)
 
+println("Pvec")
+println(pvec)
+
 # construct NLP struct
-lvar = pvec - 0.5*pvec
-uvar = pvec + 0.5*pvec
+#lvar = fill(-Inf, length(pvec))
+#uvar = fill(Inf, length(pvec))
+lvar = pvec - 0.1*abs.(pvec)
+uvar = pvec + 0.1*abs.(pvec)
 nlp = CLSDyn.DynamicNLP(problem, cost, lvar, uvar)
 
 # NLP function abstractions
@@ -135,9 +140,16 @@ function NLPModels.obj(nlp::CLSDyn.DynamicNLP, x::AbstractVector)
 end
 
 function NLPModels.grad!(nlp::CLSDyn.DynamicNLP, x::AbstractVector, gx::AbstractVector)
-  increment!(nlp, :neval_grad)
-  gx .= -gradient_power(x, nlp.ivp, nlp.cost)
-  return gx
+    increment!(nlp, :neval_grad)
+    gx .= FiniteDiff.finite_difference_gradient(obj_wrapper, x)
+    #gx .= -gradient_power(x, nlp.ivp, nlp.cost)
+    return gx
+end
+
+function MadNLP.hess_dense!(nlp::CLSDyn.DynamicNLP, x, y, H::AbstractMatrix; obj_weight=1.0)
+    FiniteDiff.finite_difference_hessian!(H, obj_wrapper, x)
+    H .= obj_weight .* H
+    return H
 end
 
 function MadNLP.jac_dense!(nlp::CLSDyn.DynamicNLP, x::AbstractVector, jac::AbstractMatrix)
@@ -145,12 +157,14 @@ end
 
 
 # set initial guess
-p0 = pvec
+p0 = copy(pvec)
+nlp.meta.x0 .= p0
 
 # solve problem
 ips = MadNLP.MadNLPSolver(nlp; print_level=MadNLP.INFO,
             kkt_system=MadNLP.DENSE_KKT_SYSTEM,
-            hessian_approximation=MadNLP.DENSE_BFGS,
+            #hessian_approximation=MadNLP.DENSE_BFGS,
+            nlp_scaling=true,
             linear_solver=LapackCPUSolver,
-            max_iter=10)
+            max_iter=250)
 MadNLP.solve!(ips)
